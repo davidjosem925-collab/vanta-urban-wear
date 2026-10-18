@@ -36,6 +36,7 @@ de secretos. No versionar `.env.local`.
 | `npm test` | Pruebas de UI, configuración y SQL/RLS embebido |
 | `npm run test:watch` | Pruebas en modo desarrollo |
 | `npm run check` | Lint + pruebas + build |
+| `npm run verify:supabase` | Verificar lectura real con variables privadas configuradas |
 
 ### Estructura
 
@@ -84,3 +85,23 @@ Correo Argentino o retiro, Mercado Pago con tarjetas y medios de efectivo,
 transferencia con descuento y efectivo al retirar. El panel será privado para
 productos, stock y pedidos. Precios, descuentos, pago y stock deberán validarse
 en servidor siguiendo la arquitectura documentada antes de habilitar compras.
+
+## VANTA — Etapa 2
+
+El frontend ahora implementa catálogo público por categorías, páginas de producto,
+galería privada de Supabase Storage, selección de talle/color y estados de carga,
+error y vacío, con una nueva interfaz Dark Luxury responsive.
+
+Configuración y arquitectura en [docs/stage-2-catalog.md](docs/stage-2-catalog.md).
+La configuración sigue usando `.env.local` y las mismas dos variables públicas.
+La URL del proyecto está documentada; **ninguna clave real está versionada**.
+El cliente público solo consulta datos; no escribe productos, pedidos o stock.
+
+La disponibilidad real no se expone con las políticas actuales: las variantes se
+identifican como publicadas y el stock como pendiente de confirmación. No se
+inventan descuentos por transferencia. El seed opcional de desarrollo se mantiene
+separado en `supabase/seeds/catalog.example.sql` y no se ejecuta automáticamente.
+
+El alcance descrito en la sección de etapa 1 queda como registro de esa entrega;
+el estado actual y su validación se detallan en [docs/stage-2-review.md](docs/stage-2-review.md).
+Carrito, checkout, pagos reales y panel siguen fuera de alcance.
