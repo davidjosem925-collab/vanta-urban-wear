@@ -12,8 +12,8 @@ export function id(value) {
   const h = hash(`vanta-demo-v1:${value}`).slice(0, 32);
   return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
 }
-export function catalog() {
-  const data = JSON.parse(readFileSync(resolve(SEEDS, 'catalog.demo.json'), 'utf8'));
+export function catalog(source) {
+  const data = source ?? JSON.parse(readFileSync(resolve(SEEDS, 'catalog.demo.json'), 'utf8'));
   if (data.project_ref !== PROJECT_REF || data.version !== 'vanta-demo-v1' || data.bucket !== 'product-images') throw new Error('Proyecto o versión no autorizados.');
   if (data.products.length !== 8 || data.categories.length !== 4 || new Set(data.products.map(p=>p.slug)).size !== 8) throw new Error('Se requieren ocho productos únicos y cuatro categorías.');
   if (data.sizes.join(',') !== 'S,M,L,XL' || data.colors.join(',') !== 'Negro,Grafito' || data.on_hand_per_variant !== 6) throw new Error('Variantes o stock inesperados.');

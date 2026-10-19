@@ -2,9 +2,12 @@
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { catalog } from '../../scripts/demo-catalog.mjs';
+import { buildDemoSql, buildDemoStatements } from '../../scripts/prepare-demo-catalog.mjs';
 
 const source = JSON.parse(readFileSync('supabase/seeds/catalog.demo.json', 'utf8'));
-const seed = readFileSync('supabase/seeds/catalog.example.sql', 'utf8');
+const unconfirmedSeed = readFileSync('supabase/seeds/catalog.example.sql', 'utf8');
+const seed = buildDemoSql(catalog(), source.project_ref);
 let db: PGlite;
 async function scalar(sql: string) {
   return (await db.query<{ n: number }>(sql)).rows[0].n;
@@ -36,10 +39,44 @@ beforeEach(async () => {
   for (const product of source.products) {
     await db.query('insert into storage.objects(bucket_id,name) values ($1,$2)', [source.bucket,product.image.storage_path]);
   }
-  await db.exec(`set vanta.demo_project_ref='${source.project_ref}'`);
 }, 30000);
 afterEach(async () => { await db.close(); });
 describe('Catálogo demo VANTA: SQL real sobre migraciones vigentes', () => {
+  it('reproduce 42P01 al confirmar la creación antigua ON COMMIT DROP antes de usarla', async () => {
+    await db.exec('create temp table vanta_demo_categories(id uuid) on commit drop;');
+    await expect(db.query('select * from vanta_demo_categories')).rejects.toMatchObject({code:'42P01'});
+    // PostgreSQL itself does not drop it early when the complete transaction is retained.
+    await db.exec('begin; create temp table regression_categories(id uuid) on commit drop; insert into regression_categories values (gen_random_uuid());');
+    expect(await scalar('select count(*)::int n from regression_categories')).toBe(1);
+    await db.exec('commit');
+    await expect(db.query('select * from regression_categories')).rejects.toMatchObject({code:'42P01'});
+  });
+  it('ejecuta la carga como una sentencia autónoma y el resumen en otra petición sin estado de sesión', async () => {
+    const [block,summary] = buildDemoStatements(catalog(), source.project_ref);
+    expect(unconfirmedSeed).toBe(buildDemoSql(catalog()));
+    expect(block).not.toMatch(/create\s+(?:temp|temporary)\s+table|on\s+commit\s+drop|current_setting|set_config/i);
+    // query() accepts a single statement, unlike exec() accepting an entire script.
+    await db.query(block);
+    await db.exec('discard all');
+    expect((await db.query(summary)).rows).toEqual([{
+      demo_products:8, demo_variants:64, demo_images:8, demo_inventory_rows:64,
+    }]);
+    await db.query(block);
+    expect(await scalar('select count(*)::int n from public.products')).toBe(8);
+  });
+  it('mantiene exactamente las ocho rutas del JSON y rechaza rutas antiguas en la raíz', async () => {
+    const paths=source.products.map((p: {image:{storage_path:string}})=>p.image.storage_path).sort();
+    expect(new Set(paths).size).toBe(8);
+    for (const path of paths) expect(path).toMatch(/^vanta-demo-v1\/[^/]+\/front\.png$/);
+    await db.exec("update storage.objects set name=replace(name,'/front.png','.png')");
+    await expect(db.exec(seed)).rejects.toThrow(/Faltan fotografías/);
+    await db.exec('rollback');
+    expect(await scalar('select count(*)::int n from public.products')).toBe(0);
+    await db.exec('delete from storage.objects');
+    for(const path of paths) await db.query("insert into storage.objects(bucket_id,name) values ('product-images',$1)",[path]);
+    await db.exec(seed);
+    expect((await db.query<{storage_path:string}>('select storage_path from public.product_images order by storage_path')).rows.map(r=>r.storage_path)).toEqual(paths);
+  });
   it('crea ocho productos, dos por categoría, 64 variantes e inventario sin duplicar al repetir', async () => {
     await db.exec(seed);
     const before = (await db.query('select id,slug,updated_at from public.products order by id')).rows;
@@ -79,10 +116,9 @@ describe('Catálogo demo VANTA: SQL real sobre migraciones vigentes', () => {
     expect(await scalar('select count(*)::int n from public.product_variants')).toBe(0);
   });
   it('rechaza falta de confirmación y fotografías faltantes antes de publicar', async () => {
-    await db.exec(`set vanta.demo_project_ref=''`);
-    await expect(db.exec(seed)).rejects.toThrow(/confirmar/);
+    await expect(db.exec(unconfirmedSeed)).rejects.toThrow(/confirmar/);
     await db.exec('rollback');
-    await db.exec(`set vanta.demo_project_ref='${source.project_ref}'; delete from storage.objects`);
+    await db.exec('delete from storage.objects');
     await expect(db.exec(seed)).rejects.toThrow(/Faltan fotografías/);
     await db.exec('rollback');
     expect(await scalar('select count(*)::int n from public.products')).toBe(0);

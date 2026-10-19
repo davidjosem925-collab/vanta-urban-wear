@@ -1,8 +1,10 @@
-# Carga propuesta del catálogo demo de VANTA — pendiente de aprobación
+# Carga del catálogo demo de VANTA en SQL Editor
 
-**No se ha ejecutado contra Supabase remoto.** Esta entrega prepara archivos y
-pruebas locales. No hay migraciones nuevas ni cambios de políticas RLS. La PR #2
-permanece sin fusionar. No ejecutar esta guía hasta aprobar la carga.
+**Esta corrección se comprobó solo localmente; no ejecuta el seed remoto.**
+No hay migraciones nuevas ni cambios de políticas RLS. La PR #2 permanece sin
+fusionar. Si el operador ya cargó y verificó las ocho fotos, conservarlas y pasar
+al paso 3; no es necesario volver a cargarlas. La ejecución de escritura debe
+contar con aprobación del operador.
 
 ## Alcance revisable
 
@@ -35,7 +37,8 @@ existencias reales. Las imágenes se siguen leyendo mediante URLs firmadas.
 
 - `supabase/seeds/catalog.demo.json`: fuente de datos y SHA-256 de cada PNG.
 - `supabase/seeds/catalog.example.sql`: seed completo generado, transaccional;
-  reemplaza el antiguo ejemplo de cuatro productos locales.
+  plantilla segura sin confirmación, generada sin tablas temporales.
+  Para SQL Editor se genera una copia confirmada en `work/` (paso 3).
 - `supabase/seeds/assets/vanta-demo-v1/*.png`: ocho originales. Procedencia en
   `supabase/seeds/assets/README.md`. No son fotos de otras tiendas.
 - `scripts/prepare-demo-catalog.mjs`: genera SQL localmente; `--check` detecta
@@ -96,29 +99,105 @@ mediante Storage del Dashboard, conservando exactamente `image.storage_path`
 de cada entrada del JSON. No hacer público el bucket ni reemplazar objetos
 existentes diferentes. El CLI es la opción reproducible con verificación de bytes.
 
-## 3. Tras la aprobación: ejecutar el SQL en VANTA
+## 3. Generar y ejecutar una copia confirmada en SQL Editor
 
-En **SQL Editor del mismo proyecto** y como operador autorizado:
+Actualizar primero la rama (no usar una copia anterior del SQL guardada en el
+Dashboard):
 
-1. Verificar nuevamente el ref en el Dashboard. Este es el control humano del
-   destino de la base; una variable de sesión no demuestra su identidad.
-2. Abrir `supabase/seeds/catalog.example.sql` de esta rama y revisar su contenido.
-3. En una consulta nueva, anteponer esta línea al archivo completo:
+```bash
+git switch feat/stage-2-catalog
+git pull --ff-only origin feat/stage-2-catalog
+npm ci
+npm run demo:check
+npm run demo:prepare -- --confirm-project=evlbfjvvljbkntlozokt --output=work/vanta-demo-load.sql
+```
 
-   ```sql
-   SET vanta.demo_project_ref = 'evlbfjvvljbkntlozokt';
-   ```
+Estos comandos no se conectan a Supabase. La plantilla versionada
+`supabase/seeds/catalog.example.sql` deja la confirmación vacía deliberadamente y
+se niega a cargar datos. El generador produce `work/vanta-demo-load.sql` con la
+confirmación **dentro del propio bloque**: no requiere editar SQL manualmente,
+ni un `SET` en una ejecución anterior. `work/` está ignorado por Git.
 
-4. Pegar debajo el SQL completo, incluidos `begin;` y `commit;`, y ejecutarlo una
-   sola vez. Debe devolver: **8 productos / 64 variantes / 8 imágenes / 64 filas
-   de inventario**. Repetir el mismo archivo es seguro.
+En **SQL Editor del proyecto VANTA** y como operador autorizado:
 
-La confirmación de sesión es una barrera deliberada, no una autenticación del
-proyecto. El seed verifica el bucket y la existencia de las ocho rutas en
-`storage.objects`; el CLI anterior es quien verifica los bytes reales. Las
-inserciones del catálogo y el stock se confirman en **una transacción**. Si falla
-un control, no continuar con fragmentos del archivo. Ejecutar `ROLLBACK;` si la
-sesión sigue abierta, revisar el conflicto y repetir el archivo completo.
+1. Verificar el ref `evlbfjvvljbkntlozokt` en el Dashboard. El texto de confirmación
+   del archivo es una barrera de intención, **no demuestra la identidad de la base**.
+2. Crear una consulta nueva y pegar **todo** `work/vanta-demo-load.sql` recién
+   generado. No usar el SQL antiguo ni anteponer `SET`, `BEGIN` o `COMMIT`.
+3. Quitar cualquier selección parcial del editor y ejecutar el archivo completo,
+   desde `DO $vanta_demo$` hasta el resumen final. No ejecutar las líneas internas
+   del bloque por separado. El cierre puede usar otra etiqueta si los datos lo
+   requieren; siempre copiar el archivo completo.
+4. Esperar el resultado: **8 productos / 64 variantes / 8 imágenes / 64 filas
+   de inventario**. Repetir este mismo archivo no duplica datos ni repone stock.
+
+Todas las escrituras, controles y bloqueos viven en **una única sentencia DO
+atómica**, sin tablas temporales y sin `COMMIT` interno. Una excepción revierte
+las escrituras de ese bloque incluso si el cliente usa autocommit. El resumen es
+un `SELECT` independiente sobre tablas permanentes e IDs incluidos en la consulta;
+funciona también si se ejecuta en otra petición, después de confirmar la carga.
+Un resumen aislado no realiza la carga ni demuestra que el bloque anterior corrió:
+no seleccionarlo solo, y no ignorar un error del bloque aunque aparezca un resumen.
+
+Ante cualquier error, detenerse y revisar el mensaje. No borrar imágenes,
+productos ni tablas, no hacer `db reset` y no omitir controles. Las escrituras que
+una ejecución **antigua por fragmentos** haya confirmado no se pueden deshacer con
+un `ROLLBACK` posterior. El nuevo seed reconoce registros existentes compatibles
+sin reemplazarlos; si encuentra diferencias, se detiene para revisión.
+
+### Diagnóstico del error 42P01 y regresión
+
+En la versión anterior, las cuatro tablas de trabajo se creaban como temporales
+`ON COMMIT DROP`. PostgreSQL las elimina cuando termina su transacción. Por eso,
+si se confirma la creación antes del siguiente `INSERT`, este falla con
+`42P01: relation "vanta_demo_categories" does not exist`. Una conexión distinta
+tampoco ve la tabla temporal. Cambiar a `ON COMMIT PRESERVE ROWS` no solucionaría
+la dependencia de la conexión y dejaría estado entre ejecuciones.
+
+**El SQL anterior completo, con su `BEGIN` y `COMMIT`, funciona dentro de la misma
+transacción/conexión.** La regresión lo contrasta con la ejecución autocommit de
+la creación, que reproduce exactamente el 42P01. El error recibido no prueba por
+sí solo que SQL Editor separe siempre las sentencias ni permite distinguir entre
+selección parcial, otra ejecución/conexión o un archivo viejo/modificado. No se
+inspeccionó ni ejecutó el payload remoto durante esta corrección.
+
+El código público de Studio elige el texto seleccionado si existe y, en caso
+contrario, todo el editor. La ruta pública de pg-meta ejecuta el SQL recibido y
+cierra su pool al terminar esa petición. Esto impide tratar ejecuciones distintas
+como una sesión persistente garantizada. No hay fundamento para atribuir al editor
+una división automática de todas las sentencias. La corrección elimina la
+necesidad de esa continuidad en vez de depender de la configuración del editor.
+
+Referencias primarias:
+
+- [PostgreSQL: tablas temporales y ON COMMIT](https://www.postgresql.org/docs/current/sql-createtable.html).
+- [Studio: selección del SQL que se ejecuta (`getEditorSql`)](https://github.com/supabase/supabase/blob/master/apps/studio/components/interfaces/SQLEditor/SQLEditor.utils.ts).
+- [pg-meta: ejecución de `/query` y cierre del pool](https://github.com/supabase/postgres-meta/blob/master/src/server/routes/query.ts).
+- [pg-meta: envío del SQL al cliente PostgreSQL](https://github.com/supabase/postgres-meta/blob/master/src/lib/db.ts).
+
+### Rutas de imágenes: archivo local frente a Storage
+
+Son rutas distintas por diseño: `image.file` identifica el PNG del repositorio;
+`image.storage_path` identifica el objeto privado. No renombrar ni mover imágenes
+ya verificadas. El generador y el uploader leen el mismo JSON. El SQL comprueba
+y guarda exactamente estos nombres de objeto, **sin** URL ni prefijo del bucket:
+
+```text
+vanta-demo-v1/remera-essential/front.png
+vanta-demo-v1/remera-box/front.png
+vanta-demo-v1/buzo-core/front.png
+vanta-demo-v1/buzo-relax/front.png
+vanta-demo-v1/pantalon-forma/front.png
+vanta-demo-v1/pantalon-cargo/front.png
+vanta-demo-v1/conjunto-studio/front.png
+vanta-demo-v1/conjunto-weekend/front.png
+```
+
+Por ejemplo, `assets/vanta-demo-v1/remera-essential.png` es el archivo local,
+pero **no** su ruta remota. No usar `vanta-demo-v1/remera-essential.png` en Storage.
+La validación compartida rechaza ese formato antiguo. Las regresiones verifican
+la igualdad exacta JSON → SQL → `product_images.storage_path`, y que el seed
+aborta sin publicar si solo existen objetos en la raíz.
 
 ### Idempotencia y colisiones
 
@@ -185,4 +264,5 @@ Las pruebas locales ejecutan las migraciones y el seed sobre PostgreSQL embebido
 con contratos Auth/Storage simulados. Comprueban constraints, relaciones, RLS e
 idempotencia del SQL, pero **no certifican** que el esquema remoto no tenga drift,
 las credenciales del futuro operador ni el servicio remoto de firma de imágenes.
-La carga y esa comprobación real quedan pendientes de aprobación.
+La corrección del SQL no ejecuta la carga: la comprobación del servicio remoto
+tras la carga del operador sigue siendo necesaria.

@@ -75,3 +75,18 @@ No se cambiaron migraciones, RLS ni código del frontend. Ver
 [demo-catalog-load.md](demo-catalog-load.md) para archivos, comandos exactos y
 verificación posterior a la aprobación. La verificación pendiente descrita más
 arriba corresponde al registro histórico de la primera entrega.
+
+## Corrección permanente para SQL Editor (42P01)
+
+El generador reemplaza las tablas temporales `ON COMMIT DROP` por datos JSONB
+locales a una única sentencia DO atómica. El resumen posterior solo consulta
+tablas permanentes e IDs inline. La confirmación explícita se incluye en una copia
+generada en `work/`, sin `SET` de sesión ni ediciones manuales del seed.
+
+Regresiones: reproducción de 42P01 al confirmar prematuramente la creación
+temporal, contraste con transacción completa, ejecución del nuevo bloque aislado
+y resumen tras `DISCARD ALL`, repetición, coincidencia de las ocho rutas
+`vanta-demo-v1/<modelo>/front.png`, rechazo de rutas antiguas y generación de la
+copia confirmada. No se inspeccionó ni ejecutó el seed remoto; no se cambiaron
+políticas, fotos, JSON del catálogo ni productos. Procedimiento y límites del
+diagnóstico en [demo-catalog-load.md](demo-catalog-load.md).
