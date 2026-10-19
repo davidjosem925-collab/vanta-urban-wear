@@ -91,3 +91,48 @@ rechazo sin aprobación, archivos faltantes, atomicidad, repetición y lectura a
 RLS, sin ejecutarse contra el servicio remoto. Si se pospone esta aprobación, la tienda
 continúa usando los PNG y la mejora de caché; no se promete la reducción de transferencia
 hasta cargar y vincular los WebP. No hay paso remoto automático ni cambio de RLS pendiente.
+
+## Corrección Windows: LF/CRLF y preparación sin escrituras innecesarias
+
+El fallo original no provenía de Node 22.20.0 ni de PNG/WebP diferentes. El generador
+construía `manifest.json` y `link-images.pending.sql` con LF (`\n`), pero comprobaba
+igualdad exacta con el texto leído del disco. Sin `.gitattributes`, un checkout con
+`core.autocrlf=true` podía entregar esos textos en CRLF (`\r\n`). Preparar los reescribía
+con LF, por eso la comprobación pasaba después y volvía a fallar al restaurarlos.
+Git normaliza CRLF a LF al comparar con el índice: eso explica los avisos de saltos
+de línea y la ausencia de cambios de contenido en el diff. El mensaje genérico
+«Preparación incompleta» ocultaba cuál de esas verificaciones había fallado.
+
+La corrección:
+
+- `.gitattributes` exige LF para los dos textos generados y declara PNG/WebP binarios.
+- La comparación textual solo normaliza CRLF a LF; no elimina espacios, BOM,
+  saltos finales ni cambios de campos, rutas, hashes o SQL.
+- Se mantienen SHA-256 de los originales y del manifiesto, y la comparación binaria
+  exacta del WebP regenerado. No se normalizan bytes de imágenes ni se aceptan
+  diferencias de codificación entre plataformas como si fueran equivalentes.
+- Preparar no escribe archivos que ya coinciden, incluso si los textos existentes
+  usan CRLF. Conserva sus bytes y fechas de modificación. Los textos nuevos o que
+  realmente deban regenerarse se escriben en LF.
+- Los errores ahora identifican el archivo faltante/alterado y la causa concreta.
+- La regresión prueba las 36 imágenes con ambos textos en CRLF, preservación de
+  bytes/fechas y rechazo de cambios reales y corrupción binaria. CI agrega checkout
+  limpio con `core.autocrlf=true`, Node 22.20.0 y `npm ci` en Windows y Linux:
+  comprueba antes de preparar, prepara, vuelve a comprobar y exige Git sin cambios.
+
+Actualizar desde PowerShell, con el árbol limpio y conservando las variables existentes:
+
+```powershell
+git switch feat/stage-3-cart
+git pull --ff-only origin feat/stage-3-cart
+npm ci
+npm run images:check
+git status --short
+```
+
+No hace falta preparar ni restaurar archivos como solución al checkout. Si se ejecuta
+`npm run images:prepare` con los archivos correctos, debe conservarlos sin modificaciones.
+No es necesario cambiar `core.autocrlf` globalmente ni ejecutar `git add --renormalize`.
+Si hay cambios locales reales antes de actualizar, revisarlos y conservarlos primero;
+no usar restauraciones masivas. La carga opcional de Storage sigue siendo manual y
+separada de esta corrección: estos comandos no conectan con Supabase ni ejecutan SQL.

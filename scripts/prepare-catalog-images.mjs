@@ -1,7 +1,8 @@
 /** Offline only. Never connects to Storage or SQL; originals remain byte-for-byte intact. */
 import sharp from "sharp";
 import { mkdir, readFile, writeFile, lstat } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
+import { generatedImageFile, sameGeneratedText } from "./generated-image-file.mjs";
 import { pathToFileURL } from "node:url";
 import {
   ROOT,
@@ -27,7 +28,7 @@ export function metadataSql(records, confirmation = "PENDIENTE_DE_APROBACION") {
     .join(",\n");
   return `-- PREPARADO OFFLINE. NO EJECUTAR SIN APROBAR FOTOS Y 36 METADATOS NUEVOS.\n-- Proyecto exclusivo: ${PROJECT_REF}. Primero subir WebP sin sobrescribir.\n-- En SQL Editor, seleccionar este proyecto y ejecutar TODO el bloque.\n-- Requiere generar un archivo confirmado con --confirm-project.\ndo $vanta$\ndeclare confirmation text := ${quote(confirmation)};\nbegin\n  if confirmation <> '${PROJECT_REF}' then raise exception 'Carga pendiente de aprobación del proyecto VANTA'; end if;\n  if not exists(select 1 from storage.buckets where id='product-images' and not public and 'image/webp'=any(allowed_mime_types)) then raise exception 'Bucket privado WebP requerido'; end if;\n  lock table public.product_images in share row exclusive mode;\n  if exists(\n    select 1 from (values\n${values}\n    ) d(id,product_id,original_id,original,storage_path,alt,position)\n    where not exists(select 1 from public.product_images i join public.products p on p.id=i.product_id where i.id=d.original_id and i.product_id=d.product_id and i.storage_path=d.original and p.active)\n       or not exists(select 1 from storage.objects o where o.bucket_id='product-images' and o.name=d.storage_path)\n       or exists(select 1 from public.product_images i where (i.id=d.id or i.storage_path=d.storage_path) and (i.id<>d.id or i.product_id<>d.product_id or i.storage_path<>d.storage_path or i.alt<>d.alt or i.position<>d.position))\n  ) then raise exception 'Original, archivo optimizado o identidad incompatible: no se modificó nada'; end if;\n  insert into public.product_images(id,product_id,storage_path,alt,position)\n  select d.id,d.product_id,d.storage_path,d.alt,d.position from (values\n${values}\n  ) d(id,product_id,original_id,original,storage_path,alt,position) on conflict(id) do nothing;\nend\n$vanta$;\n-- Solo agrega metadatos nuevos; no cambia originales, productos ni RLS.\n`;
 }
-export async function prepareImages(check = false) {
+export async function prepareImages(check = false, output = OUTPUT) {
   const data = selectCatalog();
   const records = [];
   for (const product of data.products) {
@@ -62,14 +63,8 @@ export async function prepareImages(check = false) {
         alt: product.image.alt,
         position: 10000 + Object.keys(imageProfiles).indexOf(profile),
       };
-      const target = resolve(OUTPUT, storage_path);
-      if (check) {
-        if (hash(await readFile(target)) !== record.sha256)
-          throw new Error("WebP desactualizado: regenerar offline.");
-      } else {
-        await mkdir(dirname(target), { recursive: true });
-        await writeFile(target, encoded.data);
-      }
+      const target = resolve(output, storage_path);
+      await generatedImageFile(target, encoded.data, { check });
       records.push(record);
     }
   }
@@ -89,10 +84,7 @@ export async function prepareImages(check = false) {
     ["manifest.json", manifest],
     ["link-images.pending.sql", sql],
   ]) {
-    if (check) {
-      if ((await readFile(resolve(OUTPUT, filename), "utf8")) !== text)
-        throw new Error("Manifiesto/SQL desactualizado.");
-    } else await writeFile(resolve(OUTPUT, filename), text);
+    await generatedImageFile(resolve(output, filename), text, { check, text: true });
   }
   return records;
 }
@@ -131,7 +123,7 @@ if (
         if (
           error.code !== "EEXIST" ||
           (await lstat(target)).isSymbolicLink() ||
-          (await readFile(target, "utf8")) !== sql
+          !sameGeneratedText(await readFile(target, "utf8"), sql)
         )
           throw error;
       }
@@ -142,9 +134,9 @@ if (
     console.log(
       `OK offline: ${records.length} WebP; ${records.reduce((n, r) => n + r.bytes, 0)} bytes. Originales conservados. Sin conexión ni carga remota.`,
     );
-  } catch {
+  } catch (error) {
     console.error(
-      "Preparación incompleta: revisar originales y archivos optimizados. Sin operaciones remotas.",
+      `Preparación incompleta: ${error instanceof Error ? error.message : "revisar originales y archivos optimizados"} Sin operaciones remotas.`,
     );
     process.exitCode = 1;
   }

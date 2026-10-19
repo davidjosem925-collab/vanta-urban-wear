@@ -165,7 +165,7 @@ Resultados de la entrega:
 
 | Comprobación | Resultado |
 | --- | --- |
-| `npm run check` | Lint sin warnings, 187 pruebas aprobadas, build correcto |
+| `npm run check` | Lint sin warnings, 197 pruebas aprobadas, build correcto |
 | `npm run test:e2e` | 24 pruebas en los cuatro tamaños de pantalla |
 | Revisión previa con una prenda publicada real | Agregado de 2 unidades, imagen privada firmada, total y persistencia correctos en 1440, 375 y 320 px |
 | Errores JavaScript / escrituras durante esa revisión previa | 0 / 0 |
