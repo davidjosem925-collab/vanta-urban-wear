@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { ArrowIcon } from "../../components/ArrowIcon";
 import type { CatalogProduct } from "../catalog/service";
 import { useCart } from "./context";
 import { MAX_QUANTITY, validQuantity } from "./model";
@@ -27,6 +26,7 @@ export function AddToCart({
       className="cart-add"
       onSubmit={async (event) => {
         event.preventDefault();
+        if (cart.adding) return;
         setFeedback(null);
         try {
           await cart.add(product, color, size, Number(quantity));
@@ -63,13 +63,15 @@ export function AddToCart({
           aria-invalid={
             visible && !validQuantity(Number(quantity)) ? true : undefined
           }
-          disabled={cart.adding}
+          readOnly={cart.adding}
         />
         <button
           className="button primary"
           type="submit"
           aria-describedby="cart-add-feedback"
-          disabled={cart.adding || !product.variants.some((v) => v.active)}
+          disabled={!product.variants.some((v) => v.active)}
+          aria-disabled={cart.adding}
+          aria-busy={cart.adding}
         >
           {cart.adding ? "Verificando…" : "Agregar al carrito"}
         </button>
@@ -87,15 +89,6 @@ export function AddToCart({
         {visible && (
           <>
             <p>{visible.message}</p>
-            {visible.success && (
-              <button
-                type="button"
-                className="cart-text-button"
-                onClick={cart.openCart}
-              >
-                Ver carrito <ArrowIcon />
-              </button>
-            )}
           </>
         )}
       </div>

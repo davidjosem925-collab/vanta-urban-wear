@@ -35,6 +35,10 @@ function choose(color = "Negro", size = "M") {
 async function add() {
   fireEvent.click(screen.getByRole("button", { name: "Agregar al carrito" }));
   await screen.findByText("Prenda agregada al carrito.");
+  const panel = await screen.findByRole("dialog", { name: "Tu carrito" });
+  fireEvent.click(
+    within(panel).getByRole("button", { name: "Cerrar carrito" }),
+  );
 }
 async function open() {
   fireEvent.click(screen.getByRole("button", { name: /^Abrir carrito/ }));
@@ -54,6 +58,43 @@ function deferred<T>() {
   return { promise, resolve };
 }
 describe("Carrito integrado", () => {
+  it("abre automáticamente con los datos recién verificados sin esperar otra consulta", async () => {
+    const background = deferred<CatalogProduct>();
+    let calls = 0;
+    const lookup = vi.fn(() =>
+      ++calls > 2 ? background.promise : Promise.resolve(product),
+    );
+    await detail(fixtureService({ product: lookup }));
+    choose();
+    const button = screen.getByRole("button", { name: "Agregar al carrito" });
+    button.focus();
+    fireEvent.click(button);
+    const panel = await screen.findByRole("dialog", { name: "Tu carrito" });
+    expect(
+      within(panel).getByRole("link", { name: product.name }),
+    ).toBeVisible();
+    expect(within(panel).getByText(/Talle M/)).toHaveTextContent("Negro");
+    expect(
+      within(panel).getByRole("img", { name: "Essential vista frontal" }),
+    ).toBeVisible();
+    expect(within(panel).getByText("Subtotal")).toHaveTextContent(
+      price(product.price_cents),
+    );
+    expect(
+      within(panel).queryByText("Verificando prenda y precio…"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Ver carrito/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(panel).getByRole("button", { name: "Cerrar carrito" }),
+    ).toHaveFocus();
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Cerrar carrito" }),
+    );
+    expect(button).toHaveFocus();
+    await act(async () => background.resolve(product));
+  });
   it("muestra carrito vacío, acceso visible y continuación deshabilitada", async () => {
     await detail();
     const panel = await open();
@@ -80,6 +121,7 @@ describe("Carrito integrado", () => {
       ),
     ).toBeVisible();
     expect(lookup).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Negro" }));
     fireEvent.click(screen.getByRole("button", { name: "Agregar al carrito" }));
     expect(
@@ -303,7 +345,9 @@ describe("Carrito integrado", () => {
   it("no calcula un producto despublicado y permite quitarlo", async () => {
     localStorage.setItem(STORAGE_KEY, writeCart([line]));
     let published = true;
-    await detail(fixtureService({ product: async () => published ? product : null }));
+    await detail(
+      fixtureService({ product: async () => (published ? product : null) }),
+    );
     published = false;
     const panel = await open();
     await waitFor(() =>
@@ -348,7 +392,10 @@ describe("Carrito integrado", () => {
     choose();
     delay = true;
     fireEvent.click(screen.getByRole("button", { name: "Agregar al carrito" }));
-    expect(screen.getByRole("button", { name: "Verificando…" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Verificando…" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Verificando…" }));
     await act(async () => pending.resolve(product));
     expect(
       await screen.findByText("Prenda agregada al carrito."),
@@ -367,6 +414,17 @@ describe("Carrito integrado", () => {
     const panel = await open();
     slow = true;
     fireEvent.click(within(panel).getByRole("button", { name: /^Aumentar/ }));
+    expect(
+      within(panel).getByRole("link", { name: product.name }),
+    ).toBeVisible();
+    expect(within(panel).getByText("Subtotal")).toHaveTextContent(
+      "Por confirmar",
+    );
+    expect(
+      within(panel).queryByText(`${price(product.price_cents)} ARS`, {
+        exact: false,
+      }),
+    ).not.toBeInTheDocument();
     fireEvent.click(within(panel).getByRole("button", { name: /^Eliminar/ }));
     await act(async () => old.resolve(product));
     expect(within(panel).getByText("0 unidades")).toBeVisible();

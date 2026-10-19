@@ -65,6 +65,10 @@
   flex: 1;
   min-height: 48px;
 }
+.cart-add-controls > button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: progress;
+}
 .cart-add .small {
   line-height: 1.7;
   margin-top: 12px;
@@ -88,7 +92,7 @@
   border: 0;
   text-decoration: underline;
   text-underline-offset: 4px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .cart-text-button:hover {
   color: #fff;
@@ -223,14 +227,14 @@
 .cart-unit-price,
 .cart-stock,
 .cart-line-notice {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
   margin: 5px 0;
 }
 .cart-variant,
 .cart-stock,
 .cart-unit-price span {
-  color: #adaba9;
+  color: #c4c1bd;
 }
 .cart-line-notice {
   color: #ddc7b4;
@@ -262,16 +266,16 @@
 .cart-quantity span {
   min-width: 22px;
   text-align: center;
-  font-size: 12px;
+  font-size: 14px;
 }
 .cart-subtotal {
   display: flex;
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
-  font-size: 11px;
+  font-size: 13px;
   margin: 14px 0 0;
-  color: #adaba9;
+  color: #c4c1bd;
 }
 .cart-subtotal strong {
   color: #f2f0ed;
@@ -318,7 +322,7 @@
   color: #adaba9;
 }
 .cart-summary .small {
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.7;
 }
 .cart-summary .button {

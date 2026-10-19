@@ -118,6 +118,10 @@ Carrito funcional con selección obligatoria de talle/color, cantidades, agrupac
 por variante, panel lateral accesible, subtotales y total en centavos ARS. La
 selección persiste en `localStorage`; precios, variantes publicadas e imágenes
 firmadas se vuelven a consultar al catálogo público. Stock por confirmar.
+Al agregar se abre automáticamente el panel con la variante recién verificada.
+Las fichas incluyen guía orientativa de talles por categoría, con instrucciones
+de medición y cierre accesible. Los precios omiten `,00` cuando no hay centavos
+significativos y conservan las fracciones reales.
 
 No crea pedidos, reservas ni pagos y no requiere migraciones ni cargas remotas.
 La continuación de compra permanece deshabilitada. Límites: 10 unidades por

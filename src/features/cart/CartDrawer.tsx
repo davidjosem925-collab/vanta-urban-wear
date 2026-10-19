@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  isDialogBackdrop,
+  trapModalFocus,
+  useModalDialog,
+} from "../../components/useModalDialog";
 import { Photo } from "../../components/Photo";
 import { formatARS, productHref } from "../catalog/model";
 import { useCart } from "./context";
@@ -50,6 +55,7 @@ function CartItem({
   const { line, product, variant, status } = entry;
   const name = product?.name ?? "Prenda por verificar";
   const ready = status === "ready" && product && variant;
+  const verifying = status === "loading" && Boolean(product && variant);
   const image = product?.images[0];
   return (
     <li className="cart-item">
@@ -77,10 +83,19 @@ function CartItem({
             {variant.color}
           </p>
         )}
-        {ready ? (
+        {ready || verifying ? (
           <>
             <p className="cart-unit-price">
-              {formatARS(product.price_cents)} ARS <span>/ unidad</span>
+              {ready ? (
+                <>
+                  {formatARS(product.price_cents)} ARS <span>/ unidad</span>
+                </>
+              ) : (
+                <>
+                  Verificando precio…
+                  <span className="sr-only">Verificando prenda y precio…</span>
+                </>
+              )}
             </p>
             <p className="cart-stock">Stock por confirmar</p>
           </>
@@ -129,11 +144,13 @@ function CartItem({
             Eliminar
           </button>
         </div>
-        {ready && (
+        {(ready || verifying) && (
           <p className="cart-subtotal">
             Subtotal{" "}
             <strong>
-              {formatARS(product.price_cents * line.quantity)} ARS
+              {ready
+                ? `${formatARS(product.price_cents * line.quantity)} ARS`
+                : "Por confirmar"}
             </strong>
           </p>
         )}
@@ -143,8 +160,7 @@ function CartItem({
 }
 export function CartDrawer() {
   const cart = useCart();
-  const dialog = useRef<HTMLDialogElement>(null);
-  const close = useRef<HTMLButtonElement>(null);
+  const { dialog, initialFocus: close } = useModalDialog(cart.open);
   const clearButton = useRef<HTMLButtonElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
   const restoreClearFocus = useRef(false);
@@ -156,23 +172,6 @@ export function CartDrawer() {
       restoreClearFocus.current = false;
     }
   }, [confirmClear]);
-  useEffect(() => {
-    if (!cart.open) return;
-    const element = dialog.current!;
-    const previous =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    const overflow = document.body.style.overflow;
-    element.showModal();
-    document.body.style.overflow = "hidden";
-    close.current?.focus();
-    return () => {
-      element.close();
-      document.body.style.overflow = overflow;
-      if (previous?.isConnected) previous.focus({ preventScroll: true });
-    };
-  }, [cart.open]);
   function dismiss() {
     setConfirmClear(false);
     cart.closeCart();
@@ -188,44 +187,14 @@ export function CartDrawer() {
       className="cart-drawer"
       aria-labelledby="cart-title"
       aria-describedby="cart-disclaimer"
-      onKeyDown={(event) => {
-        if (event.key !== "Tab") return;
-        const controls = [
-          ...event.currentTarget.querySelectorAll<HTMLElement>(
-            "a[href], button:not(:disabled), input:not(:disabled), [tabindex]",
-          ),
-        ].filter(
-          (node) => node.tabIndex >= 0 && node.getClientRects().length > 0,
-        );
-        const first = controls[0];
-        const last = controls.at(-1);
-        if (event.shiftKey && document.activeElement === first && last) {
-          event.preventDefault();
-          last.focus();
-        } else if (
-          !event.shiftKey &&
-          document.activeElement === last &&
-          first
-        ) {
-          event.preventDefault();
-          first.focus();
-        }
-      }}
+      onKeyDown={trapModalFocus}
       onCancel={(event) => {
         event.preventDefault();
         if (confirmClear) cancelClear();
         else dismiss();
       }}
       onClick={(event) => {
-        if (event.target !== event.currentTarget) return;
-        const rect = event.currentTarget.getBoundingClientRect();
-        if (
-          event.clientX < rect.left ||
-          event.clientX > rect.right ||
-          event.clientY < rect.top ||
-          event.clientY > rect.bottom
-        )
-          dismiss();
+        if (isDialogBackdrop(event)) dismiss();
       }}
     >
       <header className="cart-heading">

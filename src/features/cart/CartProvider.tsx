@@ -48,13 +48,17 @@ export function CartProvider({
   const epoch = useRef(0);
   const mounted = useRef(false);
   const [revision, setRevision] = useState(0);
+  const revisionRef = useRef(0);
   const [resolved, setResolved] = useState<{
     lines: CartLine[];
     revision: number;
     service: CatalogService;
     entries: CartEntry[];
   } | null>(null);
-  const refresh = useCallback(() => setRevision((n) => n + 1), []);
+  const refresh = useCallback(() => {
+    revisionRef.current++;
+    setRevision(revisionRef.current);
+  }, []);
   const commit = useCallback((next: CartLine[]) => {
     linesRef.current = next;
     setLines(next);
@@ -169,12 +173,33 @@ export function CartProvider({
               fresh.slug !== product.slug
             )
               throw new Error("Esta prenda ya no está publicada.");
-            commit(
-              addLine(
-                linesRef.current,
-                selection(fresh, color, size, quantity),
-              ),
+            const next = addLine(
+              linesRef.current,
+              selection(fresh, color, size, quantity),
             );
+            // Show the just-verified product immediately; never seed from local prices.
+            // Other products remain pending until the normal full refresh completes.
+            const entries: CartEntry[] = next.map((line) => {
+              if (line.productId !== fresh.id || line.slug !== fresh.slug)
+                return { line, status: "loading" };
+              const variant = fresh.variants.find(
+                (v) =>
+                  v.id === line.variantId &&
+                  v.active &&
+                  v.product_id === fresh.id,
+              );
+              return variant
+                ? { line, status: "ready", product: fresh, variant }
+                : { line, status: "unavailable", product: fresh };
+            });
+            setResolved({
+              lines: next,
+              revision: revisionRef.current,
+              service,
+              entries,
+            });
+            commit(next);
+            setOpen(true);
           } finally {
             addingRef.current = false;
             if (mounted.current) setAdding(false);

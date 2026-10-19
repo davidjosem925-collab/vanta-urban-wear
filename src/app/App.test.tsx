@@ -132,7 +132,7 @@ describe("Tienda VANTA", () => {
     render(<App service={fixtureService({ product: async () => demo })} />);
     await screen.findByRole("heading", { name: product.name });
     const sizes = screen.getByRole("group", { name: /Talle/ });
-    expect(within(sizes).getAllByRole("button").map((button) => button.textContent)).toEqual(["S", "M", "L", "XL"]);
+    expect(within(sizes).getAllByRole("button", { pressed: false }).map((button) => button.textContent)).toEqual(["S", "M", "L", "XL"]);
     fireEvent.click(screen.getByRole("button", { name: "Blanco Hueso" }));
     fireEvent.click(within(sizes).getByRole("button", { name: "XL" }));
     expect(screen.getByRole("status")).toHaveTextContent("Blanco Hueso / XL: variante publicada. Stock por confirmar.");

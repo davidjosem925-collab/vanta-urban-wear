@@ -6,10 +6,27 @@ import { categories, product } from "../src/test/fixtures";
 async function catalog(page: Page) {
   const state = {
     price: product.price_cents,
+    categoryId: product.category_id,
     offline: false,
+    errors: [] as string[],
+    consoleErrors: [] as string[],
     writes: [] as string[],
     unexpected: [] as string[],
   };
+  page.on("pageerror", (error) => state.errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") state.consoleErrors.push(message.text());
+  });
+  const allCategories = [
+    ...categories,
+    {
+      ...categories[0],
+      id: "cat-pants",
+      name: "Pantalones",
+      slug: "pantalones",
+    },
+    { ...categories[0], id: "cat-sets", name: "Conjuntos", slug: "conjuntos" },
+  ];
   const photo = await readFile("public/images/vanta-editorial.webp");
   await page.route("**/*", async (route) => {
     const request = route.request();
@@ -31,10 +48,16 @@ async function catalog(page: Page) {
           json: { message: "offline fixture" },
         });
       if (path.endsWith("/categories"))
-        return route.fulfill({ json: categories });
+        return route.fulfill({ json: allCategories });
       if (path.endsWith("/products"))
         return route.fulfill({
-          json: [{ ...product, price_cents: state.price }],
+          json: [
+            {
+              ...product,
+              category_id: state.categoryId,
+              price_cents: state.price,
+            },
+          ],
         });
       if (path.endsWith("/product_variants"))
         return route.fulfill({ json: product.variants });
@@ -81,6 +104,12 @@ async function add(page: Page, color = "Negro", size = "M") {
     .getByRole("button", { name: "Agregar al carrito", exact: true })
     .click();
   await expect(page.getByText("Prenda agregada al carrito.")).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Tu carrito", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("link", { name: product.name }).first(),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Cerrar carrito" }).click();
 }
 async function panel(page: Page) {
   // The page can be scrolled to the quantity field on a phone; return to the header.
@@ -101,6 +130,7 @@ test("responsive: selección, variantes, cantidades, persistencia y vaciado", as
   await expect(
     page.getByText("Seleccioná talle y color antes de agregar la prenda."),
   ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await add(page);
   await add(page);
   await add(page, "Grafito", "L");
@@ -108,8 +138,12 @@ test("responsive: selección, variantes, cantidades, persistencia y vaciado", as
   await expect(dialog.getByRole("listitem")).toHaveCount(2);
   await expect(dialog.getByText("3 unidades")).toBeVisible();
   const qty = dialog.getByRole("group", { name: /Negro, M/ });
+  const beforeChange = await qty.boundingBox();
   await qty.getByRole("button", { name: /^Aumentar/ }).click();
   await expect(dialog.getByText("4 unidades")).toBeVisible();
+  expect(
+    Math.abs((await qty.boundingBox())!.y - beforeChange!.y),
+  ).toBeLessThanOrEqual(1);
   await qty.getByRole("button", { name: /^Disminuir/ }).click();
   await expect(dialog.getByText("3 unidades")).toBeVisible();
   await expect(
@@ -174,6 +208,8 @@ test("responsive: selección, variantes, cantidades, persistencia y vaciado", as
   ).toBeVisible();
   expect(state.writes).toEqual([]);
   expect(state.unexpected).toEqual([]);
+  expect(state.errors).toEqual([]);
+  expect(state.consoleErrors).toEqual([]);
 });
 test("accesibilidad: foco modal, Escape, cierre exterior, menú y movimiento reducido", async ({
   page,
@@ -260,6 +296,165 @@ test("precios actuales, error de red y datos locales manipulados", async ({
   await panel(page);
   await expect(dialog.getByRole("alert")).toContainText("descartamos");
   await expect(dialog.getByText("0 unidades")).toBeVisible();
+  expect(state.writes).toEqual([]);
+  expect(state.unexpected).toEqual([]);
+});
+
+test("apertura automática sin saltos, datos completos y formato de precios", async ({
+  page,
+}, testInfo) => {
+  const state = await catalog(page);
+  state.price = 2_700_000;
+  await page.goto("/#/producto/remera-essential");
+  await page.getByRole("button", { name: "Negro", exact: true }).click();
+  await page.getByRole("button", { name: "M", exact: true }).click();
+  await page.getByLabel("Cantidad", { exact: true }).fill("2");
+  const addButton = page.getByRole("button", {
+    name: "Agregar al carrito",
+    exact: true,
+  });
+  await addButton.scrollIntoViewIfNeeded();
+  const before = await page.evaluate(() => window.scrollY);
+  await addButton.click();
+  const dialog = page.getByRole("dialog", { name: "Tu carrito", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("link", { name: product.name })).toBeVisible();
+  await expect(dialog.locator(".cart-variant")).toHaveText(/Talle M.*Negro/);
+  await expect(dialog.getByText("2 unidades")).toBeVisible();
+  await expect(dialog.locator(".cart-unit-price")).toHaveText(/27\.000 ARS/);
+  await expect(dialog.locator(".cart-subtotal")).toHaveText(/54\.000 ARS/);
+  await expect(dialog.locator(".cart-total strong")).toHaveText(/54\.000/);
+  await expect(dialog.locator(".cart-total strong")).not.toHaveText(/,00/);
+  await expect(
+    page.getByRole("button", { name: "Ver carrito", includeHidden: true }),
+  ).toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", { name: "Cerrar carrito" }),
+  ).toBeFocused();
+  expect(await page.evaluate(() => window.scrollY)).toBe(before);
+  await expect(dialog.getByRole("img")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("cart-auto.png") });
+  await dialog.getByRole("button", { name: "Cerrar carrito" }).click();
+  await expect(addButton).toBeFocused();
+  expect(await page.evaluate(() => window.scrollY)).toBe(before);
+  await expect(page.locator(".detail-price")).toHaveText(/27\.000 ARS/);
+  await page.reload();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await panel(page);
+  await expect(dialog.getByText("2 unidades")).toBeVisible();
+  expect(state.writes).toEqual([]);
+  expect(state.errors).toEqual([]);
+  expect(state.consoleErrors).toEqual([]);
+});
+
+test("guías por categoría: tablas, foco, cierres y móvil sin desbordes", async ({
+  page,
+}, testInfo) => {
+  const state = await catalog(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const [categoryId, name, count] of [
+    ["cat-tee", "Remeras", 1],
+    ["cat-hoodie", "Buzos", 1],
+    ["cat-pants", "Pantalones", 1],
+    ["cat-sets", "Conjuntos", 2],
+  ] as const) {
+    state.categoryId = categoryId;
+    await page.goto("/#/producto/remera-essential");
+    await page.reload();
+    const trigger = page.getByRole("button", {
+      name: "Guía de talles",
+      exact: true,
+    });
+    await trigger.scrollIntoViewIfNeeded();
+    const before = await page.evaluate(() => window.scrollY);
+    await trigger.click();
+    const dialog = page.getByRole("dialog", {
+      name: "Guía de talles",
+      exact: true,
+    });
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByRole("heading", { name, exact: true }),
+    ).toBeVisible();
+    await expect(dialog.getByRole("table")).toHaveCount(count);
+    await expect(
+      dialog.getByText(/No son medidas oficiales verificadas/),
+    ).toBeVisible();
+    for (const table of await dialog.getByRole("table").all()) {
+      await expect(table.getByRole("rowheader")).toHaveText([
+        "S",
+        "M",
+        "L",
+        "XL",
+      ]);
+      expect(await table.evaluate((t) => t.scrollWidth <= t.clientWidth)).toBe(
+        true,
+      );
+    }
+    if (name === "Remeras")
+      await expect(dialog.getByRole("columnheader")).toHaveText([
+        "Talle",
+        "Ancho de pecho",
+        "Largo",
+      ]);
+    if (name === "Buzos")
+      await expect(dialog.getByRole("columnheader")).toHaveText([
+        "Talle",
+        "Ancho de pecho",
+        "Largo",
+        "Manga",
+      ]);
+    if (name === "Pantalones")
+      await expect(dialog.getByRole("columnheader")).toHaveText([
+        "Talle",
+        "Cintura (contorno)",
+        "Cadera (contorno)",
+        "Largo",
+      ]);
+    if (name === "Conjuntos") {
+      await expect(
+        dialog.getByRole("table", { name: /Parte superior/ }),
+      ).toBeVisible();
+      await expect(
+        dialog.getByRole("table", { name: /Parte inferior/ }),
+      ).toBeAttached();
+    }
+    await expect(
+      dialog.getByRole("button", { name: "Cerrar guía de talles" }),
+    ).toBeFocused();
+    expect(await dialog.evaluate((d) => d.scrollWidth <= d.clientWidth)).toBe(
+      true,
+    );
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    expect(await page.evaluate(() => window.scrollY)).toBe(before);
+    expect(
+      await dialog.evaluate((d) => getComputedStyle(d).animationName),
+    ).toBe("none");
+    for (const key of ["Tab", "Shift+Tab"]) {
+      await page.keyboard.press(key);
+      expect(
+        await dialog.evaluate((d) => d.contains(document.activeElement)),
+      ).toBe(true);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`guide-${name}.png`) });
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(trigger).toBeFocused();
+    expect(await page.evaluate(() => window.scrollY)).toBe(before);
+    await trigger.click();
+    await page.mouse.click(1, 1);
+    await expect(dialog).not.toBeVisible();
+    await expect(trigger).toBeFocused();
+    await trigger.click();
+    await dialog.getByRole("button", { name: "Cerrar guía de talles" }).click();
+    await expect(dialog).not.toBeVisible();
+  }
+  expect(state.errors).toEqual([]);
+  expect(state.consoleErrors).toEqual([]);
   expect(state.writes).toEqual([]);
   expect(state.unexpected).toEqual([]);
 });
