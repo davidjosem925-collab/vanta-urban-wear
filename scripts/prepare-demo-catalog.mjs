@@ -1,6 +1,7 @@
 /** Offline generator: no database connection, migration, secret or remote operation. */
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, lstatSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
+import * as nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { catalog, id, imageBytes, PROJECT_REF, ROOT, SEEDS } from './demo-catalog.mjs';
 const quote=v=>typeof v==='number'?String(v):`'${String(v).replaceAll("'","''")}'`;
@@ -100,14 +101,36 @@ select
 }
 export const buildDemoSql=(data,confirmedProjectRef='')=>buildDemoStatements(data,confirmedProjectRef).join('\n');
 
+export function resolveWorkOutput(root, output, paths = nodePath) {
+  const work = paths.resolve(root, 'work');
+  const candidate = paths.resolve(root, output);
+  const relative = paths.relative(work, candidate);
+  if (!relative || relative === '..' || relative.startsWith('..' + paths.sep) || paths.isAbsolute(relative)) {
+    throw new Error('El archivo confirmado solo puede generarse dentro de work/.');
+  }
+  return candidate;
+}
+
+function rejectOutputSymlinks(file) {
+  const work = resolve(ROOT, 'work');
+  // Also reject symlinks/junctions at any existing component, including work/
+  // and the output file itself, so a lexically valid path cannot redirect writes.
+  for (let current = file; ; current = dirname(current)) {
+    if (lstatSync(current, { throwIfNoEntry: false })?.isSymbolicLink()) {
+      throw new Error('La salida dentro de work/ no puede atravesar enlaces simbólicos o junctions.');
+    }
+    if (nodePath.relative(work, current) === '') break;
+  }
+}
+
 export function runGenerator(args) {
   const check=args.includes('--check');
   const confirmation=args.find(a=>a.startsWith('--confirm-project='))?.slice('--confirm-project='.length) ?? '';
   const output=args.find(a=>a.startsWith('--output='))?.slice('--output='.length);
   if(args.some(a=>a!=='--check' && !a.startsWith('--confirm-project=') && !a.startsWith('--output='))) throw new Error('Argumentos no reconocidos.');
   if((confirmation || output) && (!confirmation || !output || check)) throw new Error('Usar --confirm-project y --output juntos, sin --check.');
-  const path=output?resolve(ROOT,output):resolve(SEEDS,'catalog.example.sql');
-  if(output && !path.startsWith(resolve(ROOT,'work')+'/')) throw new Error('El archivo confirmado solo puede generarse dentro de work/.');
+  const path=output?resolveWorkOutput(ROOT,output):resolve(SEEDS,'catalog.example.sql');
+  if(output) rejectOutputSymlinks(path);
   const data=catalog();
   const sql=buildDemoSql(data,confirmation);
   data.products.forEach(imageBytes);

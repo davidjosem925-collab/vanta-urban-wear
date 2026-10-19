@@ -112,6 +112,34 @@ npm run demo:check
 npm run demo:prepare -- --confirm-project=evlbfjvvljbkntlozokt --output=work/vanta-demo-load.sql
 ```
 
+### PowerShell y rutas de Windows
+
+El script del repositorio se llama **`demo:prepare`**, no `demo`. Desde la raíz
+del checkout, este comando funciona en PowerShell y también acepta `/`:
+
+```powershell
+npm run demo:prepare -- --confirm-project=evlbfjvvljbkntlozokt --output=work/vanta-demo-load.sql
+```
+
+Con separadores nativos y un archivo de salida absoluto dentro de `work/`:
+
+```powershell
+$demoOutput = Join-Path (Get-Location).Path 'work\vanta-demo-load.sql'
+npm run demo:prepare -- --confirm-project=evlbfjvvljbkntlozokt "--output=$demoOutput"
+Get-Content -Raw -Encoding UTF8 $demoOutput
+```
+
+Las comillas conservan rutas con espacios como un único argumento. No se requiere
+que el archivo exista; el generador crea sus subcarpetas. Las rutas relativas se
+resuelven desde la raíz del repositorio. Ejecutar estos ejemplos en esa raíz.
+
+La validación usa `node:path.resolve`, `relative`, `isAbsolute` y `sep`, no una
+comparación de prefijos con `/`. Se rechazan `work/` como salida, destinos externos,
+prefijos como `work-other`, escapes con `..`, otras unidades y recursos UNC externos.
+Se rechazan también enlaces simbólicos/junctions en los componentes de salida.
+Las pruebas ejercitan `path.win32` y `path.posix` desde Linux; eso verifica las
+reglas de ambos sistemas, sin afirmar una ejecución nativa de PowerShell.
+
 Estos comandos no se conectan a Supabase. La plantilla versionada
 `supabase/seeds/catalog.example.sql` deja la confirmación vacía deliberadamente y
 se niega a cargar datos. El generador produce `work/vanta-demo-load.sql` con la
