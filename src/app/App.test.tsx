@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fixtureService, product } from "../test/fixtures";
 import { App } from "./App";
@@ -11,6 +11,46 @@ function at(hash: string) {
   window.history.replaceState(null, "", `/${hash}`);
 }
 describe("Tienda VANTA", () => {
+  it("ofrece Inicio antes de Colección y conserva el enlace del logo", () => {
+    render(<App service={fixtureService()} />);
+    const navigation = screen.getByRole("navigation", { name: "Navegación principal" });
+    const links = within(navigation).getAllByRole("link");
+    expect(links.slice(0, 2).map((link) => link.textContent)).toEqual(["Inicio", "Colección"]);
+    expect(links[0]).toHaveAttribute("href", "#/");
+    expect(links[0]).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "VANTA, inicio" })).toHaveAttribute("href", "#/");
+    expect(screen.queryByRole("navigation", { name: "Ruta de navegación" })).not.toBeInTheDocument();
+  });
+  it.each([
+    ["#/catalogo", ["Inicio", "Colección"]],
+    ["#/categoria/remeras", ["Inicio", "Colección", "Remeras"]],
+    ["#/producto/remera-essential", ["Inicio", "Colección", product.name]],
+  ])("permite volver desde los breadcrumbs de %s", async (hash, labels) => {
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    at(hash);
+    render(<App service={fixtureService()} />);
+    const breadcrumb = await screen.findByRole("navigation", { name: "Ruta de navegación" });
+    expect(breadcrumb.textContent).toBe(labels.join("/"));
+    expect(breadcrumb.querySelector('[aria-current="page"]')).toHaveTextContent(labels.at(-1)!);
+    if (labels.length > 2) {
+      expect(within(breadcrumb).getByRole("link", { name: "Colección" })).toHaveAttribute("href", "#/catalogo");
+    }
+    fireEvent.click(within(breadcrumb).getByRole("link", { name: "Inicio" }));
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Presencia"));
+    expect(window.location.hash).toBe("#/");
+  });
+  it("regresa a la portada y cierra el menú móvil al elegir Inicio", async () => {
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    at("#/catalogo");
+    render(<App service={fixtureService()} />);
+    const toggle = screen.getByRole("button", { name: "Abrir menú" });
+    fireEvent.click(toggle);
+    const navigation = screen.getByRole("navigation", { name: "Navegación principal" });
+    fireEvent.click(within(navigation).getByRole("link", { name: "Inicio" }));
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Presencia"));
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("main")).toHaveFocus();
+  });
   it("presenta identidad, categorías y catálogo de solo lectura", async () => {
     render(<App service={fixtureService()} />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(

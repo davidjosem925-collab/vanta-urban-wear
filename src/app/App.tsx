@@ -182,6 +182,12 @@ export function App({
             onClick={() => setMenuOpen(false)}
           >
             <a
+              href="#/"
+              aria-current={route.kind === "home" ? "page" : undefined}
+            >
+              Inicio
+            </a>
+            <a
               href="#/catalogo"
               aria-current={route.kind === "catalog" ? "page" : undefined}
             >

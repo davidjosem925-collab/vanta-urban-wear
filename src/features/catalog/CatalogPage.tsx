@@ -44,6 +44,21 @@ export function CatalogPage({
       className="catalog-section section-shell"
       aria-labelledby="catalog-title"
     >
+      {!home && (
+        <nav className="breadcrumb" aria-label="Ruta de navegación">
+          <a href="#/">Inicio</a>
+          <span aria-hidden="true">/</span>
+          {categorySlug ? (
+            <>
+              <a href="#/catalogo">Colección</a>
+              <span aria-hidden="true">/</span>
+              <span aria-current="page">{title}</span>
+            </>
+          ) : (
+            <span aria-current="page">Colección</span>
+          )}
+        </nav>
+      )}
       <div className="section-heading">
         <div>
           <p className="eyebrow">
