@@ -71,14 +71,23 @@ function Home({ service }: { service: CatalogService }) {
           <p className="section-aside">Cuatro formas de ser vos.</p>
         </div>
         <div className="category-grid">
-          {menuCategories.map((c) => (
+          {menuCategories.map((c, index) => (
             <a
               className="category-card"
               href={categoryHref(c.slug)}
               key={c.slug}
             >
-              <span className="category-number">{c.number}</span>
-              <div>
+              <img
+                className="category-photo"
+                src={c.image}
+                style={{ left: `${-index * 100}%` }}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                width={1536}
+                height={1024}
+              />
+              <div className="category-copy">
                 <h3>{c.name}</h3>
                 <p>{c.caption}</p>
               </div>

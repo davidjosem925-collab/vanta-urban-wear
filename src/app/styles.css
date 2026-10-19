@@ -293,35 +293,51 @@ em {
 }
 .category-card {
   position: relative;
-  min-height: 225px;
+  aspect-ratio: 3 / 4;
+  min-width: 0;
   padding: 24px;
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  align-items: flex-end;
   border: 1px solid #363638;
-  background: linear-gradient(130deg, #242425, #141415);
+  background: #181818;
   overflow: hidden;
-  transition:
-    border-color 0.25s,
-    background 0.25s;
+  isolation: isolate;
+  transition: border-color 0.3s;
 }
-.category-card:nth-child(2) {
-  background: linear-gradient(130deg, #333334, #1a1a1b);
+.category-photo {
+  position: absolute;
+  top: 0;
+  width: 400%;
+  max-width: none;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 32%;
+  z-index: -2;
+  transition: filter 0.5s ease;
 }
-.category-card:nth-child(3) {
-  background: linear-gradient(130deg, #1b1b1c, #101011);
+.category-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 35%,
+    rgb(0 0 0 / 35%) 65%,
+    rgb(0 0 0 / 88%)
+  );
+  z-index: -1;
+  pointer-events: none;
 }
-.category-card:nth-child(4) {
-  background: linear-gradient(130deg, #292829, #181818);
-}
-.category-card:hover {
+.category-card:hover,
+.category-card:focus-visible {
   border-color: #8b8883;
 }
-.category-number {
-  font-family: Georgia, serif;
-  font-size: 38px;
-  font-style: italic;
-  color: #898681;
+.category-card:hover .category-photo,
+.category-card:focus-visible .category-photo {
+  filter: brightness(1.12);
+}
+.category-copy {
+  min-width: 0;
 }
 .category-card h3 {
   font-size: 23px;
@@ -330,17 +346,19 @@ em {
 }
 .category-card p {
   font-size: 11px;
-  color: #bbb8b2;
+  line-height: 1.6;
+  color: #cbc7c0;
 }
 .category-arrow {
   position: absolute;
   top: 24px;
   right: 24px;
   font-size: 22px;
-  color: #a4a09a;
-  transition: transform 0.2s;
+  color: #d4d0c9;
+  transition: transform 0.3s;
 }
-.category-card:hover .category-arrow {
+.category-card:hover .category-arrow,
+.category-card:focus-visible .category-arrow {
   transform: translate(3px, -3px);
 }
 .catalog-section {
@@ -826,7 +844,6 @@ em {
   }
   .category-card {
     padding: 20px;
-    min-height: 205px;
   }
   .category-card h3 {
     font-size: 21px;
@@ -944,8 +961,7 @@ em {
     gap: 10px;
   }
   .category-card {
-    min-height: 190px;
-    padding: 18px;
+    padding: 16px;
   }
   .category-card h3 {
     font-size: 22px;

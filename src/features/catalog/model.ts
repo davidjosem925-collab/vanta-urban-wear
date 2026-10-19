@@ -3,25 +3,25 @@ export const menuCategories = [
   {
     name: "Remeras",
     slug: "remeras",
-    number: "01",
+    image: "/images/vanta-categories.png",
     caption: "La base de todos los días.",
   },
   {
     name: "Buzos",
     slug: "buzos",
-    number: "02",
+    image: "/images/vanta-categories.png",
     caption: "Capas con carácter.",
   },
   {
     name: "Pantalones",
     slug: "pantalones",
-    number: "03",
+    image: "/images/vanta-categories.png",
     caption: "Otra forma de moverte.",
   },
   {
     name: "Conjuntos",
     slug: "conjuntos",
-    number: "04",
+    image: "/images/vanta-categories.png",
     caption: "Una misma intención.",
   },
 ];
