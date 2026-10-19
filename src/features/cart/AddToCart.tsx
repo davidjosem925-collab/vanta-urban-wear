@@ -30,11 +30,7 @@ export function AddToCart({
         setFeedback(null);
         try {
           await cart.add(product, color, size, Number(quantity));
-          setFeedback({
-            selection: key,
-            message: "Prenda agregada al carrito.",
-            success: true,
-          });
+          setFeedback(null);
         } catch (error) {
           setFeedback({
             selection: key,

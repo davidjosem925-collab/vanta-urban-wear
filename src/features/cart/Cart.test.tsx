@@ -35,10 +35,6 @@ function choose(color = "Negro", size = "M") {
 async function add() {
   fireEvent.click(screen.getByRole("button", { name: "Agregar al carrito" }));
   await screen.findByText("Prenda agregada al carrito.");
-  const panel = await screen.findByRole("dialog", { name: "Tu carrito" });
-  fireEvent.click(
-    within(panel).getByRole("button", { name: "Cerrar carrito" }),
-  );
 }
 async function open() {
   fireEvent.click(screen.getByRole("button", { name: /^Abrir carrito/ }));
@@ -58,42 +54,24 @@ function deferred<T>() {
   return { promise, resolve };
 }
 describe("Carrito integrado", () => {
-  it("abre automáticamente con los datos recién verificados sin esperar otra consulta", async () => {
-    const background = deferred<CatalogProduct>();
-    let calls = 0;
-    const lookup = vi.fn(() =>
-      ++calls > 2 ? background.promise : Promise.resolve(product),
-    );
-    await detail(fixtureService({ product: lookup }));
+  it("notifica sin abrir el panel y muestra los datos recién verificados", async () => {
+    await detail();
     choose();
     const button = screen.getByRole("button", { name: "Agregar al carrito" });
     button.focus();
-    fireEvent.click(button);
-    const panel = await screen.findByRole("dialog", { name: "Tu carrito" });
-    expect(
-      within(panel).getByRole("link", { name: product.name }),
-    ).toBeVisible();
-    expect(within(panel).getByText(/Talle M/)).toHaveTextContent("Negro");
-    expect(
-      within(panel).getByRole("img", { name: "Essential vista frontal" }),
-    ).toBeVisible();
-    expect(within(panel).getByText("Subtotal")).toHaveTextContent(
-      price(product.price_cents),
-    );
-    expect(
-      within(panel).queryByText("Verificando prenda y precio…"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /Ver carrito/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(panel).getByRole("button", { name: "Cerrar carrito" }),
-    ).toHaveFocus();
-    fireEvent.click(
-      within(panel).getByRole("button", { name: "Cerrar carrito" }),
-    );
+    await add();
+    const notice = screen.getByRole("region", { name: "Producto agregado" });
+    expect(within(notice).getByText(product.name)).toBeVisible();
+    expect(within(notice).getByText(/Talle M/)).toHaveTextContent("Negro");
+    expect(within(notice).getByText(/1 unidad agregada/)).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(button).toHaveFocus();
-    await act(async () => background.resolve(product));
+    fireEvent.click(
+      within(notice).getByRole("button", { name: "Ver carrito" }),
+    );
+    expect(
+      await screen.findByRole("dialog", { name: "Tu carrito" }),
+    ).toBeVisible();
   });
   it("muestra carrito vacío, acceso visible y continuación deshabilitada", async () => {
     await detail();

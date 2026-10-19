@@ -11,6 +11,7 @@ import { Feedback } from "../components/Feedback";
 import { useRoute } from "./router";
 import { CartProvider } from "../features/cart/CartProvider";
 import { CartDrawer, CartTrigger } from "../features/cart/CartDrawer";
+import { CartFeedback } from "../features/cart/CartFeedback";
 
 function Home({ service }: { service: CatalogService }) {
   return (
@@ -314,6 +315,7 @@ function AppShell({ service }: { service: CatalogService }) {
         </div>
       </footer>
       <CartDrawer />
+      <CartFeedback />
     </>
   );
 }

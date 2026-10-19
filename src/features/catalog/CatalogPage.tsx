@@ -127,6 +127,7 @@ export function CatalogPage({
                       aria-label={`Ver ${product.name}`}
                     >
                       <Photo
+                        profile="card"
                         key={product.images[0]?.id ?? product.id}
                         image={product.images[0]}
                         service={service}

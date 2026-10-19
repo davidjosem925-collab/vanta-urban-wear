@@ -6,6 +6,8 @@ import { categories, product } from "../src/test/fixtures";
 async function catalog(page: Page) {
   const state = {
     price: product.price_cents,
+    photos: [] as string[],
+    signatures: 0,
     categoryId: product.category_id,
     offline: false,
     errors: [] as string[],
@@ -26,6 +28,17 @@ async function catalog(page: Page) {
       slug: "pantalones",
     },
     { ...categories[0], id: "cat-sets", name: "Conjuntos", slug: "conjuntos" },
+  ];
+  const rows = [
+    ...product.images,
+    ...product.images.flatMap((image) =>
+      ["thumb", "card", "detail"].map((profile, i) => ({
+        ...image,
+        id: `${image.id}-${profile}`,
+        position: 10000 + i,
+        storage_path: `${image.storage_path}.vanta-${profile}-v1.webp`,
+      })),
+    ),
   ];
   const photo = await readFile("public/images/vanta-editorial.webp");
   await page.route("**/*", async (route) => {
@@ -63,21 +76,22 @@ async function catalog(page: Page) {
         return route.fulfill({ json: product.variants });
       if (path.endsWith("/product_images"))
         return route.fulfill({
-          json: product.images.map(
-            ({ id, product_id, storage_path, alt, position }) => ({
-              id,
-              product_id,
-              storage_path,
-              alt,
-              position,
-            }),
-          ),
+          json: rows.map(({ id, product_id, storage_path, alt, position }) => ({
+            id,
+            product_id,
+            storage_path,
+            alt,
+            position,
+          })),
         });
     }
     if (path.startsWith("/storage/v1/object/sign/product-images")) {
-      if (request.method() === "GET")
+      if (request.method() === "GET") {
+        state.photos.push(path);
         return route.fulfill({ contentType: "image/webp", body: photo });
+      }
       const body = request.postDataJSON();
+      state.signatures++;
       if (request.method() === "POST" && Array.isArray(body.paths))
         return route.fulfill({
           json: body.paths.map((path: string) => ({
@@ -104,12 +118,7 @@ async function add(page: Page, color = "Negro", size = "M") {
     .getByRole("button", { name: "Agregar al carrito", exact: true })
     .click();
   await expect(page.getByText("Prenda agregada al carrito.")).toBeVisible();
-  const dialog = page.getByRole("dialog", { name: "Tu carrito", exact: true });
-  await expect(dialog).toBeVisible();
-  await expect(
-    dialog.getByRole("link", { name: product.name }).first(),
-  ).toBeVisible();
-  await dialog.getByRole("button", { name: "Cerrar carrito" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 }
 async function panel(page: Page) {
   // The page can be scrolled to the quantity field on a phone; return to the header.
@@ -167,7 +176,7 @@ test("responsive: selección, variantes, cantidades, persistencia y vaciado", as
     expect(box!.width).toBeGreaterThanOrEqual(44);
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
-  if (testInfo.project.name !== "desktop") {
+  if (page.viewportSize()!.width <= 760) {
     expect(
       await dialog
         .locator(".cart-scroll")
@@ -213,11 +222,11 @@ test("responsive: selección, variantes, cantidades, persistencia y vaciado", as
 });
 test("accesibilidad: foco modal, Escape, cierre exterior, menú y movimiento reducido", async ({
   page,
-}, testInfo) => {
+}) => {
   await catalog(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/#/catalogo");
-  if (testInfo.project.name !== "desktop") {
+  if (page.viewportSize()!.width <= 760) {
     await page.getByRole("button", { name: "Abrir menú" }).click();
     await expect(
       page
@@ -233,7 +242,7 @@ test("accesibilidad: foco modal, Escape, cierre exterior, menú y movimiento red
   expect(await dialog.evaluate((d) => getComputedStyle(d).animationName)).toBe(
     "none",
   );
-  if (testInfo.project.name !== "desktop")
+  if (page.viewportSize()!.width <= 760)
     await expect(page.locator("#menu-toggle")).toHaveAttribute(
       "aria-expanded",
       "false",
@@ -254,7 +263,7 @@ test("accesibilidad: foco modal, Escape, cierre exterior, menú y movimiento red
   await expect(dialog).not.toBeVisible();
   await expect(trigger).toBeFocused();
   await panel(page);
-  if (testInfo.project.name === "desktop") await page.mouse.click(10, 200);
+  if (page.viewportSize()!.width > 760) await page.mouse.click(10, 200);
   else await dialog.getByRole("button", { name: "Cerrar carrito" }).click();
   await expect(dialog).not.toBeVisible();
   await expect(trigger).toBeFocused();
@@ -300,7 +309,7 @@ test("precios actuales, error de red y datos locales manipulados", async ({
   expect(state.unexpected).toEqual([]);
 });
 
-test("apertura automática sin saltos, datos completos y formato de precios", async ({
+test("notificación no interrumpe, se actualiza y permite abrir el carrito", async ({
   page,
 }, testInfo) => {
   const state = await catalog(page);
@@ -309,42 +318,63 @@ test("apertura automática sin saltos, datos completos y formato de precios", as
   await page.getByRole("button", { name: "Negro", exact: true }).click();
   await page.getByRole("button", { name: "M", exact: true }).click();
   await page.getByLabel("Cantidad", { exact: true }).fill("2");
-  const addButton = page.getByRole("button", {
+  const button = page.getByRole("button", {
     name: "Agregar al carrito",
     exact: true,
   });
-  await addButton.scrollIntoViewIfNeeded();
-  const before = await page.evaluate(() => window.scrollY);
-  await addButton.click();
+  await button.scrollIntoViewIfNeeded();
+  const before = await page.evaluate(() => scrollY);
+  await button.click();
+  const notice = page.getByRole("region", { name: "Producto agregado" });
+  await expect(notice).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(notice.getByText(product.name)).toBeVisible();
+  await expect(notice.getByText(/2 unidades agregadas/)).toBeVisible();
+  await expect(notice.getByRole("img")).toHaveAttribute("loading", "eager");
+  expect(await page.evaluate(() => scrollY)).toBe(before);
+  await expect(button).toBeFocused();
+  await page.getByLabel("Cantidad", { exact: true }).fill("1");
+  await button.click();
+  await expect(notice.getByText(/1 unidad agregada/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Abrir carrito, 3 unidades" }),
+  ).toBeAttached();
+  await expect(notice).toHaveCSS("opacity", "1");
+  await page.screenshot({ path: testInfo.outputPath("notification.png") });
+  await notice
+    .getByRole("button", { name: "Ver carrito", exact: true })
+    .click();
   const dialog = page.getByRole("dialog", { name: "Tu carrito", exact: true });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("link", { name: product.name })).toBeVisible();
-  await expect(dialog.locator(".cart-variant")).toHaveText(/Talle M.*Negro/);
-  await expect(dialog.getByText("2 unidades")).toBeVisible();
-  await expect(dialog.locator(".cart-unit-price")).toHaveText(/27\.000 ARS/);
-  await expect(dialog.locator(".cart-subtotal")).toHaveText(/54\.000 ARS/);
-  await expect(dialog.locator(".cart-total strong")).toHaveText(/54\.000/);
-  await expect(dialog.locator(".cart-total strong")).not.toHaveText(/,00/);
-  await expect(
-    page.getByRole("button", { name: "Ver carrito", includeHidden: true }),
-  ).toHaveCount(0);
-  await expect(
-    dialog.getByRole("button", { name: "Cerrar carrito" }),
-  ).toBeFocused();
-  expect(await page.evaluate(() => window.scrollY)).toBe(before);
-  await expect(dialog.getByRole("img")).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("cart-auto.png") });
+  await expect(dialog.locator(".cart-total strong")).toHaveText(/81\.000/);
+  await expect(page.locator(".mobile-cart-bar")).not.toBeVisible();
   await dialog.getByRole("button", { name: "Cerrar carrito" }).click();
-  await expect(addButton).toBeFocused();
-  expect(await page.evaluate(() => window.scrollY)).toBe(before);
-  await expect(page.locator(".detail-price")).toHaveText(/27\.000 ARS/);
+  await expect(
+    page.getByRole("button", { name: "Abrir carrito, 3 unidades" }),
+  ).toBeFocused();
+  if (page.viewportSize()!.width <= 760) {
+    const floating = page.locator(".mobile-cart-bar");
+    await expect(floating).toBeVisible();
+    await floating.click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Cerrar carrito" }).click();
+    await expect(floating).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(floating).toBeFocused();
+  } else await expect(page.locator(".mobile-cart-bar")).not.toBeVisible();
+  await page.getByRole("link", { name: "VANTA, inicio" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(
+    "Presencia",
+  );
   await page.reload();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
   await panel(page);
-  await expect(dialog.getByText("2 unidades")).toBeVisible();
-  expect(state.writes).toEqual([]);
+  await expect(dialog.getByText("3 unidades")).toBeVisible();
   expect(state.errors).toEqual([]);
   expect(state.consoleErrors).toEqual([]);
+  expect(state.writes).toEqual([]);
 });
 
 test("guías por categoría: tablas, foco, cierres y móvil sin desbordes", async ({
@@ -457,4 +487,70 @@ test("guías por categoría: tablas, foco, cierres y móvil sin desbordes", asyn
   expect(state.consoleErrors).toEqual([]);
   expect(state.writes).toEqual([]);
   expect(state.unexpected).toEqual([]);
+});
+
+test("miniaturas privadas, caché al navegar y notificación temporal", async ({
+  page,
+}, testInfo) => {
+  const state = await catalog(page);
+  await page.goto("/#/catalogo");
+  await page
+    .getByRole("link", { name: "Ver Remera Essential", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: product.name, level: 1 }),
+  ).toBeVisible();
+  await add(page);
+  const notice = page.getByRole("region", { name: "Producto agregado" });
+  await expect(notice.getByRole("img")).toHaveAttribute(
+    "src",
+    /vanta-thumb-v1\.webp/,
+  );
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // Keep pointer and keyboard focus away: the four-second passive timeout must run.
+  await page.mouse.move(0, 0);
+  await expect(notice).not.toBeVisible({ timeout: 6500 });
+  const floating = page.locator(".mobile-cart-bar");
+  if (page.viewportSize()!.width <= 760) {
+    await expect(floating).toBeVisible();
+    await page
+      .getByRole("button", { name: "Guía de talles", exact: true })
+      .click();
+    await expect(floating).not.toBeVisible();
+    await page.getByRole("button", { name: "Cerrar guía de talles" }).click();
+    await expect(floating).toBeVisible();
+    const addButton = page.getByRole("button", { name: "Agregar al carrito", exact: true });
+    await addButton.evaluate((element) => element.scrollIntoView({ block: "end", behavior: "instant" }));
+    const actionBounds = await addButton.boundingBox();
+    const barBounds = await floating.boundingBox();
+    expect(actionBounds!.y + actionBounds!.height).toBeLessThanOrEqual(barBounds!.y);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("mobile-cart-bar.png") });
+  } else await expect(floating).not.toBeVisible();
+  const panelElement = await panel(page);
+  await expect(panelElement.getByRole("img")).toHaveAttribute(
+    "src",
+    /vanta-thumb-v1\.webp/,
+  );
+  await panelElement.getByRole("button", { name: "Cerrar carrito" }).click();
+  await page.getByRole("link", { name: "VANTA, inicio" }).click();
+  await page
+    .getByRole("link", { name: "Ver Remera Essential", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: product.name, level: 1 }),
+  ).toBeVisible();
+  expect(state.signatures).toBe(1);
+  expect(state.photos.some((path) => path.includes("vanta-card-v1.webp"))).toBe(
+    true,
+  );
+  expect(
+    state.photos.some((path) => path.includes("vanta-detail-v1.webp")),
+  ).toBe(true);
+  expect(
+    state.photos.some((path) => path.includes("vanta-thumb-v1.webp")),
+  ).toBe(true);
+  expect(state.errors).toEqual([]);
+  expect(state.consoleErrors).toEqual([]);
+  expect(state.writes).toEqual([]);
 });

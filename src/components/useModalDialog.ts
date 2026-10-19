@@ -1,7 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent, type MouseEvent } from "react";
 
 /** Native inert background plus explicit focus containment and scroll preservation. */
-export function useModalDialog(open: boolean) {
+export function useModalDialog(open: boolean, fallbackSelector?: string) {
   const dialog = useRef<HTMLDialogElement>(null);
   const initialFocus = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -30,10 +30,26 @@ export function useModalDialog(open: boolean) {
       element.close();
       document.body.style.overflow = overflow;
       document.body.style.paddingRight = padding;
-      if (previous?.isConnected) previous.focus({ preventScroll: true });
+      const restoreFocus = () => {
+        if (previous?.isConnected) previous.focus({ preventScroll: true });
+        if (
+          (!previous?.isConnected ||
+            previous === document.body ||
+            document.activeElement !== previous) &&
+          fallbackSelector
+        )
+          document
+            .querySelector<HTMLElement>(fallbackSelector)
+            ?.focus({ preventScroll: true });
+      };
+      // Floating triggers become visible after observers process dialog.close().
+      // Wait one frame only for a hidden opener, then restore without scrolling.
+      if (previous?.isConnected && previous.hidden)
+        requestAnimationFrame(restoreFocus);
+      else restoreFocus();
       restoreScroll();
     };
-  }, [open]);
+  }, [open, fallbackSelector]);
   return { dialog, initialFocus };
 }
 export function trapModalFocus(event: KeyboardEvent<HTMLDialogElement>) {

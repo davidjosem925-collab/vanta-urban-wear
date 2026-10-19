@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import type { CatalogService } from "../catalog/service";
-import { CartContext } from "./context";
+import { CartContext, type CartNotice } from "./context";
 import {
   addLine,
   cartTotals,
@@ -44,6 +44,9 @@ export function CartProvider({
   const [warning, setWarning] = useState(initial.warning);
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [notice, setNotice] = useState<CartNotice | null>(null);
+  const noticeId = useRef(0);
+  const dismissNotice = useCallback(() => setNotice(null), []);
   const addingRef = useRef(false);
   const epoch = useRef(0);
   const mounted = useRef(false);
@@ -138,9 +141,12 @@ export function CartProvider({
         warning,
         open,
         adding,
+        notice,
+        dismissNotice,
         service,
         refresh,
         openCart() {
+          dismissNotice();
           refresh();
           setOpen(true);
         },
@@ -148,6 +154,7 @@ export function CartProvider({
           setOpen(false);
         },
         async add(product, color, size, quantity) {
+          dismissNotice();
           selection(product, color, size, quantity);
           if (addingRef.current)
             throw new Error("Esperá a que termine la verificación anterior.");
@@ -199,7 +206,13 @@ export function CartProvider({
               entries,
             });
             commit(next);
-            setOpen(true);
+            const added = selection(fresh, color, size, quantity);
+            setNotice({
+              id: ++noticeId.current,
+              product: fresh,
+              variant: fresh.variants.find((v) => v.id === added.variantId)!,
+              quantity,
+            });
           } finally {
             addingRef.current = false;
             if (mounted.current) setAdding(false);
@@ -214,6 +227,7 @@ export function CartProvider({
           commit(removeLine(linesRef.current, id));
         },
         clear() {
+          dismissNotice();
           epoch.current++;
           commit([]);
         },

@@ -1145,3 +1145,7 @@ em {
   opacity: 1;
   pointer-events: auto;
 }
+
+.photo-frame { display: block; position: relative; width: 100%; height: 100%; overflow: hidden; }
+.photo-frame img { display: block; }
+.photo-loading { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; color: #737173; background: #202022; font-size: 28px; }

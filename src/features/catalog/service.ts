@@ -10,8 +10,15 @@ import {
   supabase,
   supabaseConfigurationError,
 } from "../../lib/supabase/client";
+import { originalImagePath, type ImageProfile } from "./imageProfiles";
+import { signedImages } from "./signedImages";
 
-export type CatalogImage = ProductImageRow & { url: string | null };
+export type CatalogImage = ProductImageRow & {
+  url: string | null;
+  optimized?: Partial<
+    Record<ImageProfile, { path: string; url: string | null }>
+  >;
+};
 export type CatalogProduct = Product & {
   images: CatalogImage[];
   variants: Variant[];
@@ -25,25 +32,23 @@ export type CatalogService = {
     signal?: AbortSignal,
   ): Promise<ProductPage>;
   product(slug: string, signal?: AbortSignal): Promise<CatalogProduct | null>;
-  imageUrl(path: string): Promise<string | null>;
+  imageUrl(path: string, force?: boolean): Promise<string | null>;
 };
 export const PAGE_SIZE = 12;
-const IMAGE_LIFETIME_SECONDS = 900;
 
 export function createCatalogService(
   client: SupabaseClient<Database> | null,
 ): CatalogService {
+  const sign = signedImages(client);
   function connected() {
     if (!client)
       throw new Error(supabaseConfigurationError ?? "Catálogo sin conexión.");
     return client;
   }
-  async function imageUrl(path: string) {
+  async function imageUrl(path: string, force = false) {
     // Private bucket: signed URL, never getPublicUrl. No file uploads/DB writes.
-    const { data, error } = await connected()
-      .storage.from("product-images")
-      .createSignedUrl(path, IMAGE_LIFETIME_SECONDS);
-    return error ? null : data.signedUrl;
+    connected();
+    return (await sign([path], force)).get(path) ?? null;
   }
   async function hydrate(
     products: Product[],
@@ -71,12 +76,21 @@ export function createCatalogService(
       throw new Error("No pudimos cargar la información de los productos.");
     const rows = images.data ?? [];
     const paths = rows.map((i) => i.storage_path);
-    const signed = paths.length
-      ? await connected()
-          .storage.from("product-images")
-          .createSignedUrls(paths, IMAGE_LIFETIME_SECONDS)
-      : null;
-    const urls = new Map(signed?.data?.map((i) => [i.path, i.signedUrl]));
+    const urls = await sign(paths);
+    const derivatives = rows.filter((row) =>
+      originalImagePath(row.storage_path),
+    );
+    const originals = rows.filter((row) => {
+      const parsed = originalImagePath(row.storage_path);
+      return (
+        !parsed ||
+        !rows.some(
+          (original) =>
+            original.product_id === row.product_id &&
+            original.storage_path === parsed.original,
+        )
+      );
+    });
     return products.map((product) => {
       if (
         !Number.isSafeInteger(product.price_cents) ||
@@ -86,9 +100,23 @@ export function createCatalogService(
         throw new Error("El catálogo contiene un precio inválido.");
       return {
         ...product,
-        images: rows
+        images: originals
           .filter((i) => i.product_id === product.id)
-          .map((i) => ({ ...i, url: urls.get(i.storage_path) || null })),
+          .map((i) => {
+            const optimized: CatalogImage["optimized"] = {};
+            for (const derivative of derivatives) {
+              const parsed = originalImagePath(derivative.storage_path)!;
+              if (
+                derivative.product_id === i.product_id &&
+                parsed.original === i.storage_path
+              )
+                optimized[parsed.profile] = {
+                  path: derivative.storage_path,
+                  url: urls.get(derivative.storage_path) ?? null,
+                };
+            }
+            return { ...i, url: urls.get(i.storage_path) || null, optimized };
+          }),
         variants: (variants.data ?? []).filter(
           (v) => v.product_id === product.id,
         ),

@@ -21,10 +21,15 @@ No hace falta ejecutar seeds, migraciones ni modificar RLS.
 1. Ir a Colección y abrir una ficha de producto publicado.
 2. Intentar agregar sin seleccionar: debe pedir talle y color.
 3. Elegir una combinación publicada y una cantidad entera de 1 a 10; agregar.
-   El panel debe abrirse automáticamente con los datos completos de esa variante.
-4. Cerrar el panel y repetir la misma combinación: debe acumular unidades en una sola línea.
-5. Cerrar y elegir otra combinación: debe quedar separada.
+   Debe aparecer una notificación con miniatura, nombre, talle/color y cantidad agregada,
+   sin abrir el panel ni mover el foco. Desaparece en aproximadamente 4 segundos;
+   se pausa al enfocarla, pasar el puntero o abrir un modal. Se puede cerrar con ×.
+4. Repetir la misma combinación: debe acumular unidades en una sola línea.
+   El aviso se actualiza con la cantidad de la última operación y reinicia su duración.
+5. Elegir otra combinación: debe quedar separada. «Ver carrito» en el aviso abre el panel.
 6. El ícono del encabezado permite abrir manualmente el carrito en cualquier ruta.
+   Hasta 760 px aparece además una barra con unidades y total cuando hay productos.
+   Se oculta con cualquier modal o aviso; reserva espacio inferior y respeta áreas seguras.
 7. Revisar imagen, nombre, talle, color, precio unitario, subtotal y total ARS.
 8. Modificar cantidades, eliminar una línea y probar cancelar/confirmar el vaciado.
 9. Recargar o cerrar y abrir el navegador en el mismo origen: la selección debe
@@ -71,11 +76,10 @@ bloquea, se informa y el carrito funciona en memoria durante la visita.
   controles táctiles de 44 px. La confirmación de vaciado enfoca «Cancelar».
 - `AddToCart.tsx` agrega cantidad y mensajes de error/éxito a la ficha existente.
   `cart.css` conserva la paleta Dark Luxury y respeta movimiento reducido.
-  Tras una validación correcta se abre el panel sin enlace adicional «Ver carrito».
-  La variante recién consultada aporta inmediatamente imagen, talle/color, precio
-  y subtotal; la revalidación completa continúa en segundo plano. Las selecciones
-  incompletas o los errores no abren el panel. El estado ocupado evita envíos
-  duplicados sin hacer perder el foco al botón o al campo de cantidad.
+  Tras una validación correcta, `CartFeedback.tsx` muestra el aviso sin abrir el
+  panel. La notificación sobrevive a la navegación y ofrece «Ver carrito». No
+  se presenta éxito si falla la validación o la consulta. Los agregados consecutivos
+  reemplazan el aviso; el estado ocupado evita envíos duplicados sin perder el foco.
   Al cambiar cantidades se conserva el espacio de los controles mientras el
   precio se verifica; los importes pendientes se identifican como «Por confirmar».
 
@@ -128,16 +132,20 @@ npm run test:e2e
 selecciones, agrupación/separación, cantidades, eliminación/vaciado, centavos,
 persistencia, corrupción, versiones desconocidas, manipulación, red, productos
 despublicados, almacenamiento bloqueado y respuestas asíncronas antiguas.
-También apertura automática con el producto completo aun con la consulta posterior
-pendiente, validaciones sin apertura, guías por categoría, fallos/reintento y cierre.
+También avisos, duración y reemplazo, validaciones sin apertura, guías por categoría,
+fallos/reintento, caché/coalescencia/renovación de firmas y fallback de imágenes.
+Las pruebas locales de WebP y metadatos verifican hashes, atomicidad, idempotencia
+y RLS sin ejecutar SQL remoto.
 
 Playwright prueba la aplicación y el cliente Supabase existentes con respuestas
 interceptadas de fixtures locales: **no requiere variables reales ni accede a
-Supabase remoto**. Comprueba 1440×960, 375×812 y 320×640: compra futura
+Supabase remoto**. Comprueba 1440×960, 820×1180, 375×812 y 320×640: compra futura
 deshabilitada, variantes, cantidades, persistencia, errores, ausencia de escrituras,
 sin desbordes, scroll interior, menú móvil, cierre, foco y movimiento reducido.
 Incluye las cuatro categorías, formato de precios entero/fraccionario y apertura
-automática sin cambio de scroll ni pérdida de foco.
+del panel desde el aviso y la barra sin cambios de scroll, con restauración de foco.
+También comprueba autoocultado, navegación, imágenes por perfil y una sola solicitud
+de firma compartida durante el recorrido, con 0 errores de consola y escrituras.
 Capturas y trazas de fallos quedan en `work/playwright-results/`, sin versionar.
 CI instala Chromium y ejecuta esta suite después de `npm run check`.
 
@@ -157,15 +165,30 @@ Resultados de la entrega:
 
 | Comprobación | Resultado |
 | --- | --- |
-| `npm run check` | Lint sin warnings, 177 pruebas aprobadas, build correcto |
-| `npm run test:e2e` | 15 pruebas aprobadas en los tres tamaños de pantalla |
+| `npm run check` | Lint sin warnings, 187 pruebas aprobadas, build correcto |
+| `npm run test:e2e` | 24 pruebas en los cuatro tamaños de pantalla |
 | Revisión previa con una prenda publicada real | Agregado de 2 unidades, imagen privada firmada, total y persistencia correctos en 1440, 375 y 320 px |
 | Errores JavaScript / escrituras durante esa revisión previa | 0 / 0 |
 
 La revisión con datos reales recibió las respuestas actuales de Supabase a través
 del proxy TLS del entorno, sin desactivar la verificación de certificados. Las
 pruebas automatizadas reproducibles usan exclusivamente los fixtures locales.
-Los nuevos ajustes de UX se verifican con esos fixtures, sin operaciones remotas.
+Los nuevos ajustes de UX se verifican con esos fixtures. Esta entrega investigó
+además, en modo de solo lectura, la firma y descarga privada de una imagen.
+No se subieron archivos ni se ejecutaron sentencias SQL remotas.
+
+## Rendimiento de fotografías y paso manual opcional
+
+La caché de URLs firmadas es en memoria, acotada y con margen de vencimiento; no
+altera la revalidación de precios o variantes. `Photo` conserva dimensiones, carga
+perezosa y estados de carga/error, con fallback al original.
+
+Se prepararon offline 36 WebP (tres perfiles de las 12 imágenes) y un procedimiento
+de aprobación para subirlos sin sobrescribir y agregar 36 metadatos nuevos.
+Hasta esa aprobación la tienda conserva los PNG; el servicio privado probado no
+redujo el PNG al solicitar una transformación. Ver [investigación, archivos y carga
+manual segura](catalog-image-optimization.md). No ejecutar el seed del catálogo
+para esta optimización ni modificar políticas.
 
 ## Pendiente para la siguiente etapa
 

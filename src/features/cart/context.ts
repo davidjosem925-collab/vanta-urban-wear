@@ -1,6 +1,14 @@
 import { createContext, useContext } from "react";
 import type { CatalogProduct, CatalogService } from "../catalog/service";
 import type { CartEntry } from "./model";
+import type { Variant } from "../../lib/supabase/database.types";
+
+export type CartNotice = {
+  id: number;
+  product: CatalogProduct;
+  variant: Variant;
+  quantity: number;
+};
 
 export type CartContextValue = {
   entries: CartEntry[];
@@ -9,6 +17,8 @@ export type CartContextValue = {
   warning: string;
   open: boolean;
   adding: boolean;
+  notice: CartNotice | null;
+  dismissNotice(): void;
   service: CatalogService;
   openCart(): void;
   closeCart(): void;

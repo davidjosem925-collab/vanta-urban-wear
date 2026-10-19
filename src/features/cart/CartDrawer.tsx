@@ -61,6 +61,7 @@ function CartItem({
     <li className="cart-item">
       <div className="cart-item-photo">
         <Photo
+          profile="thumb"
           key={`${image?.id}/${image?.url}`}
           image={image}
           service={cart.service}
@@ -160,7 +161,7 @@ function CartItem({
 }
 export function CartDrawer() {
   const cart = useCart();
-  const { dialog, initialFocus: close } = useModalDialog(cart.open);
+  const { dialog, initialFocus: close } = useModalDialog(cart.open, ".cart-trigger");
   const clearButton = useRef<HTMLButtonElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
   const restoreClearFocus = useRef(false);

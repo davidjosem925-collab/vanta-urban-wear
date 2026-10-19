@@ -54,7 +54,7 @@ function ProductDetail({
                   aria-pressed={index === activeImage}
                   onClick={() => setActiveImage(index)}
                 >
-                  <Photo key={image.id} image={image} service={service} />
+                  <Photo key={image.id} image={image} service={service} profile="thumb" />
                 </button>
               ))}
             </div>

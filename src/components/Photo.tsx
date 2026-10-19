@@ -1,26 +1,55 @@
 import { useState } from "react";
 import type { CatalogImage, CatalogService } from "../features/catalog/service";
-export function Photo({
-  image,
-  service,
-  eager = false,
-  allowRetry = false,
-}: {
+import {
+  imageProfiles,
+  type ImageProfile,
+} from "../features/catalog/imageProfiles";
+
+type Props = {
   image?: CatalogImage;
   service: CatalogService;
   eager?: boolean;
   allowRetry?: boolean;
-}) {
-  const [url, setUrl] = useState(image?.url);
+  profile?: ImageProfile;
+};
+export function Photo(props: Props) {
+  const profile = props.profile ?? "detail";
+  const optimized = props.image?.optimized?.[profile];
+  return (
+    <PhotoContent
+      key={`${props.image?.id}/${props.image?.url}/${optimized?.url}/${profile}`}
+      {...props}
+      profile={profile}
+    />
+  );
+}
+function PhotoContent({
+  image,
+  service,
+  eager = false,
+  allowRetry = false,
+  profile = "detail",
+}: Props) {
+  const optimized = image?.optimized?.[profile];
+  const [usingOriginal, setUsingOriginal] = useState(!optimized?.url);
+  const [url, setUrl] = useState(optimized?.url || image?.url);
   const [retried, setRetried] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const path = usingOriginal ? image?.storage_path : optimized?.path;
   async function recover(force = false) {
+    setLoaded(false);
+    if (!usingOriginal && image?.url) {
+      setUsingOriginal(true);
+      setUrl(image.url);
+      return;
+    }
     setUrl(null);
-    if (!image || (retried && !force)) return;
+    if (!path || (retried && !force)) return;
     setRetried(true);
     try {
-      setUrl(await service.imageUrl(image.storage_path));
+      setUrl(await service.imageUrl(path, true));
     } catch {
-      /* Remain on accessible placeholder. */
+      /* Keep the accessible, stable placeholder. */
     }
   }
   if (!url)
@@ -41,6 +70,7 @@ export function Photo({
         </small>
         {image && allowRetry && (
           <button
+            type="button"
             className="image-retry"
             onClick={() => {
               void recover(true);
@@ -51,15 +81,26 @@ export function Photo({
         )}
       </div>
     );
+  const dimensions = imageProfiles[profile];
   return (
-    <img
-      src={url}
-      alt={image?.alt ?? ""}
-      loading={eager ? "eager" : "lazy"}
-      decoding="async"
-      onError={() => {
-        void recover();
-      }}
-    />
+    <span className={`photo-frame ${loaded ? "is-loaded" : "is-loading"}`}>
+      <img
+        src={url}
+        alt={image?.alt ?? ""}
+        width={dimensions.width}
+        height={dimensions.height}
+        loading={eager ? "eager" : "lazy"}
+        decoding="async"
+        onLoad={() => setLoaded(true)}
+        onError={() => {
+          void recover();
+        }}
+      />
+      {!loaded && (
+        <span className="photo-loading" aria-hidden="true">
+          V
+        </span>
+      )}
+    </span>
   );
 }

@@ -118,7 +118,11 @@ Carrito funcional con selección obligatoria de talle/color, cantidades, agrupac
 por variante, panel lateral accesible, subtotales y total en centavos ARS. La
 selección persiste en `localStorage`; precios, variantes publicadas e imágenes
 firmadas se vuelven a consultar al catálogo público. Stock por confirmar.
-Al agregar se abre automáticamente el panel con la variante recién verificada.
+Al agregar se muestra una notificación compacta durante aproximadamente 4 segundos,
+sin abrir el panel ni mover el foco. Incluye «Ver carrito». En celulares aparece
+una barra con unidades y total, oculta mientras hay notificación o un modal.
+Las URLs firmadas se reutilizan en memoria; los WebP privados opcionales y su
+carga manual están documentados en [optimización de imágenes](docs/catalog-image-optimization.md).
 Las fichas incluyen guía orientativa de talles por categoría, con instrucciones
 de medición y cierre accesible. Los precios omiten `,00` cuando no hay centavos
 significativos y conservan las fracciones reales.
