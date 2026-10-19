@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { Feedback, Loading } from "../../components/Feedback";
 import { Photo } from "../../components/Photo";
-import { formatARS, selectedVariant } from "./model";
+import { formatARS, orderedSizes, selectedVariant } from "./model";
 import type { CatalogProduct, CatalogService } from "./service";
 import { useAsync } from "./useAsync";
 
@@ -16,7 +16,7 @@ function ProductDetail({
   const [color, setColor] = useState("");
   const [size, setSize] = useState("");
   const colors = [...new Set(product.variants.map((v) => v.color))];
-  const sizes = [...new Set(product.variants.map((v) => v.size))];
+  const sizes = orderedSizes(product.variants.map((v) => v.size));
   const variant = selectedVariant(product.variants, color, size);
   function selectColor(value: string) {
     setColor(value);

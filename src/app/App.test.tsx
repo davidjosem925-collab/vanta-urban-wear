@@ -118,6 +118,26 @@ describe("Tienda VANTA", () => {
     expect(screen.getByText(/No hay un descuento publicado/)).toBeVisible();
     expect(screen.getByText(/25\.000,50/)).toBeVisible();
   });
+  it("presenta los talles ordenados y conserva combinaciones de color claro", async () => {
+    at("#/producto/remera-oversize-hueso");
+    const demo = {
+      ...product,
+      slug: "remera-oversize-hueso",
+      variants: ["Blanco Hueso", "Negro"].flatMap((color) =>
+        ["L", "M", "S", "XL"].map((size) => ({
+          ...product.variants[0], id: `${color}-${size}`, size, color,
+        })),
+      ),
+    };
+    render(<App service={fixtureService({ product: async () => demo })} />);
+    await screen.findByRole("heading", { name: product.name });
+    const sizes = screen.getByRole("group", { name: /Talle/ });
+    expect(within(sizes).getAllByRole("button").map((button) => button.textContent)).toEqual(["S", "M", "L", "XL"]);
+    fireEvent.click(screen.getByRole("button", { name: "Blanco Hueso" }));
+    fireEvent.click(within(sizes).getByRole("button", { name: "XL" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Blanco Hueso / XL: variante publicada. Stock por confirmar.");
+    expect(screen.getByText(/No hay un descuento publicado/)).toBeVisible();
+  });
   it("muestra errores con reintento y después un catálogo vacío", async () => {
     at("#/catalogo");
     const products = vi

@@ -87,10 +87,13 @@ No se abrió ese acceso ni se incluyó una migración adicional en esta etapa.
 la base. Se informa “Precio por transferencia: a confirmar. No hay un descuento
 publicado.” No se calcula un porcentaje ni se anuncia un precio inventado.
 
-`supabase/seeds/catalog.example.sql` prepara ahora ocho productos de demostración,
-64 variantes e inventario ficticio, junto con ocho fotografías originales generadas
+`supabase/seeds/catalog.example.sql` prepara doce productos de demostración,
+96 variantes e inventario ficticio, junto con doce fotografías originales generadas
 con IA. No se ejecuta automáticamente ni se ha cargado en remoto. La fuente está en
-`supabase/seeds/catalog.demo.json`. El procedimiento de aprobación, carga separada
+`supabase/seeds/catalog.demo.json` (ocho originales) y
+`supabase/seeds/catalog.demo.extension.json` (cuatro nuevos). Para la base que ya
+tiene ocho modelos se usa exclusivamente el alcance `extension`, documentado en
+[demo-catalog-extension.md](demo-catalog-extension.md). El procedimiento de aprobación, carga separada
 de Storage, controles de colisiones y repetición sin reponer stock se documenta en
 [demo-catalog-load.md](demo-catalog-load.md). No ejecutar sin aprobar previamente
 el destino VANTA. No modifica RLS ni habilita lectura pública del inventario.

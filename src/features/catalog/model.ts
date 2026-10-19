@@ -45,3 +45,12 @@ export function categoryHref(slug: string) {
 export function productHref(slug: string) {
   return `#/producto/${encodeURIComponent(slug)}`;
 }
+
+const SIZE_ORDER = ["S", "M", "L", "XL"];
+export function orderedSizes(sizes: string[]) {
+  const rank = (size: string) => {
+    const index = SIZE_ORDER.indexOf(size);
+    return index < 0 ? SIZE_ORDER.length : index;
+  };
+  return [...new Set(sizes)].sort((a, b) => rank(a) - rank(b));
+}

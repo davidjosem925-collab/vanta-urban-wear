@@ -2,7 +2,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { catalog } from '../../scripts/demo-catalog.mjs';
+import { catalog, selectCatalog } from '../../scripts/demo-catalog.mjs';
 import { buildDemoSql, buildDemoStatements } from '../../scripts/prepare-demo-catalog.mjs';
 
 const source = JSON.parse(readFileSync('supabase/seeds/catalog.demo.json', 'utf8'));
@@ -53,7 +53,7 @@ describe('Catálogo demo VANTA: SQL real sobre migraciones vigentes', () => {
   });
   it('ejecuta la carga como una sentencia autónoma y el resumen en otra petición sin estado de sesión', async () => {
     const [block,summary] = buildDemoStatements(catalog(), source.project_ref);
-    expect(unconfirmedSeed).toBe(buildDemoSql(catalog()));
+    expect(unconfirmedSeed).toBe(buildDemoSql(selectCatalog()));
     expect(block).not.toMatch(/create\s+(?:temp|temporary)\s+table|on\s+commit\s+drop|current_setting|set_config/i);
     // query() accepts a single statement, unlike exec() accepting an entire script.
     await db.query(block);

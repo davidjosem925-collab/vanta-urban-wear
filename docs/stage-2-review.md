@@ -90,3 +90,33 @@ y resumen tras `DISCARD ALL`, repetición, coincidencia de las ocho rutas
 copia confirmada. No se inspeccionó ni ejecutó el seed remoto; no se cambiaron
 políticas, fotos, JSON del catálogo ni productos. Procedimiento y límites del
 diagnóstico en [demo-catalog-load.md](demo-catalog-load.md).
+
+## Ampliación preparada de ocho a doce modelos
+
+El operador confirmó la carga de los ocho modelos iniciales. Esta entrega agrega
+una fuente v2 separada con cuatro prendas claras (hueso, gris melange, beige piedra
+y gris claro), cuatro originales generados con IA y una plantilla incremental.
+Los originales v1 conservan su fuente, fotografías, hashes, UUID y SKU.
+
+El ámbito `extension` del generador y el uploader selecciona solo 4/32/4/32; el SQL
+comprueba por lectura la base 8/64/8/64 y reporta totales 12/96/12/96. Se mantienen
+el bloque DO atómico, la confirmación de proyecto, el rechazo de colisiones y la
+compatibilidad Windows/Linux. La repetición no repone stock ni toca pedidos, pagos
+o reservas. El ámbito completo `all` prepara doce modelos para una base vacía.
+
+La ficha ordena siempre los talles S, M, L y XL sin alterar las combinaciones ni
+los estilos existentes. Navegación, breadcrumbs, hero y categorías no se rediseñan.
+Las pruebas incluyen huella exacta del manifiesto original, conservación de datos
+y fotos v1, idempotencia, stock/reservas, dependencias faltantes, conflictos, RLS y
+selección de colores claros. No se ejecutó SQL ni se subieron fotos a Supabase
+remoto. Pasos PowerShell y verificaciones pendientes en
+[demo-catalog-extension.md](demo-catalog-extension.md).
+
+Validación de esta ampliación: `npm run check` aprobado (ESLint sin errores,
+TypeScript/build correctos, **105 pruebas en 11 archivos**), `git diff --check`
+correcto y `demo:check`/dry run de `demo:upload -- --scope=extension` aprobados.
+Chromium local con datos e imágenes de los doce modelos: 1440×1000, 820×1000,
+375×812 y 320×812, tres tarjetas por categoría, cuatro fichas claras, talles
+S/M/L/XL, ambos colores, breadcrumbs, menú y regreso a Inicio; cero errores de
+página, cero desbordes y cero solicitudes remotas. Las fotos se sirvieron solo en
+loopback, no desde Supabase: la revisión real posterior sigue pendiente.

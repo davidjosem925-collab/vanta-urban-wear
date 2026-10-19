@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
+import { catalog, selectCatalog } from '../../scripts/demo-catalog.mjs';
 import { syncDemoPhotos } from '../../scripts/demo-storage.mjs';
 const files = ['a','b'].map(name=>({product:{image:{storage_path:`vanta-demo-v1/${name}/front.png`}},bytes:Buffer.from(name)}));
 function fakeStorage() {
@@ -23,6 +24,19 @@ describe('Carga de fotos demo sin red ni credenciales',()=>{
     expect(await syncDemoPhotos(storage,files)).toBe(0);
     expect(storage.upload).toHaveBeenCalledTimes(2);
     expect(storage.objects.get('other-project/keep.png')?.toString()).toBe('untouched');
+  });
+  it('el ámbito extension carga solo las cuatro rutas v2 y no lee ni reemplaza las ocho originales',async()=>{
+    const storage=fakeStorage();
+    const originals=catalog().products.map(p=>({path:p.image.storage_path,bytes:Buffer.from(p.slug)}));
+    for(const original of originals) storage.objects.set(original.path,original.bytes);
+    const extra=selectCatalog('extension').products.map(product=>({product,bytes:Buffer.from(product.slug)}));
+    expect(await syncDemoPhotos(storage,extra)).toBe(4);
+    expect(await syncDemoPhotos(storage,extra)).toBe(0);
+    expect(storage.objects.size).toBe(12);
+    expect(storage.upload).toHaveBeenCalledTimes(4);
+    for(const [path] of storage.upload.mock.calls) expect(path).toMatch(/^vanta-demo-v2\//);
+    for(const [path] of storage.download.mock.calls) expect(path).toMatch(/^vanta-demo-v2\//);
+    for(const original of originals) expect(storage.objects.get(original.path)).toEqual(original.bytes);
   });
   it('aborta antes de escribir si cualquier ruta ya contiene bytes diferentes',async()=>{
     const storage=fakeStorage();

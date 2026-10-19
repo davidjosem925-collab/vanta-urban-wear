@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { parseRoute } from "../../app/router";
 import { product } from "../../test/fixtures";
-import { formatARS, selectedVariant } from "./model";
+import { formatARS, orderedSizes, selectedVariant } from "./model";
 describe("Rutas, precios y variantes", () => {
+  it("ordena S/M/L/XL aunque Supabase devuelva L/M/S/XL y elimina duplicados", () => {
+    const sizes = ["L", "M", "S", "XL", "M"];
+    expect(orderedSizes(sizes)).toEqual(["S", "M", "L", "XL"]);
+    expect(sizes).toEqual(["L", "M", "S", "XL", "M"]);
+    expect(orderedSizes(["Único", "M", "XS", "S"])).toEqual(["S", "M", "Único", "XS"]);
+  });
   it("formatea centavos en ARS sin perder decimales", () => {
     expect(formatARS(2500050)).toContain("25.000,50");
     expect(formatARS(0)).toContain("0,00");

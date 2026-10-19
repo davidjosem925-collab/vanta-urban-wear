@@ -1,15 +1,19 @@
-# Carga del catálogo demo de VANTA en SQL Editor
+# Carga completa del catálogo demo de VANTA (12 modelos)
+
+**Para ampliar el catálogo que ya tiene ocho modelos, usar
+[la guía incremental 8 → 12](demo-catalog-extension.md).** El procedimiento de esta
+página describe la carga completa, principalmente para una instalación vacía.
 
 **Esta corrección se comprobó solo localmente; no ejecuta el seed remoto.**
 No hay migraciones nuevas ni cambios de políticas RLS. La PR #2 permanece sin
-fusionar. Si el operador ya cargó y verificó las ocho fotos, conservarlas y pasar
-al paso 3; no es necesario volver a cargarlas. La ejecución de escritura debe
+fusionar. Si el operador ya cargó los ocho modelos iniciales y sus fotos, conservarlos y
+seguir la guía incremental enlazada arriba, que solo carga cuatro modelos nuevos. La ejecución de escritura debe
 contar con aprobación del operador.
 
 ## Alcance revisable
 
 Destino único: `https://evlbfjvvljbkntlozokt.supabase.co` (VANTA).
-Bucket **privado** existente: `product-images`; prefijo exclusivo `vanta-demo-v1/`.
+Bucket **privado** existente: `product-images`; prefijos exclusivos `vanta-demo-v1/` y `vanta-demo-v2/`.
 
 | Categoría | Producto ficticio | Precio ficticio ARS |
 | --- | --- | ---: |
@@ -21,11 +25,16 @@ Bucket **privado** existente: `product-images`; prefijo exclusivo `vanta-demo-v1
 | Pantalones | Pantalón Cargo — DEMO | $52.000 |
 | Conjuntos | Conjunto Studio — DEMO | $80.000 |
 | Conjuntos | Conjunto Weekend — DEMO | $76.000 |
+| Remeras | Remera Oversize Hueso — DEMO | $27.000 |
+| Buzos | Buzo Essential Melange — DEMO | $53.000 |
+| Pantalones | Pantalón Relaxed Piedra — DEMO | $50.000 |
+| Conjuntos | Conjunto Urban Gris Claro — DEMO | $78.000 |
 
 Cada producto tiene descripción explícita de demo, precio en **centavos ARS**,
 una fotografía original generada con IA y texto alternativo. Talles S/M/L/XL y
-colores Negro/Grafito: **8 variantes por producto, 64 en total**. Stock inicial:
-6 unidades por variante, `reserved=0`: **384 unidades ficticias**. Una foto por
+dos colores por modelo: **8 variantes por producto, 96 en total**. Los ocho
+originales usan Negro/Grafito; los cuatro nuevos agregan tonos claros. Stock
+inicial: 6 unidades por variante, `reserved=0`: **576 unidades ficticias**. Una foto por
 modelo; no representa todos los colores. No se agregan compradores, pedidos,
 reservas, pagos ni funcionalidades de compra.
 
@@ -35,11 +44,14 @@ existencias reales. Las imágenes se siguen leyendo mediante URLs firmadas.
 
 ## Archivos
 
-- `supabase/seeds/catalog.demo.json`: fuente de datos y SHA-256 de cada PNG.
+- `supabase/seeds/catalog.demo.json`: ocho modelos originales y SHA-256 de sus PNG.
+- `supabase/seeds/catalog.demo.extension.json`: cuatro modelos nuevos y sus hashes.
+- `supabase/seeds/catalog.extension.sql`: plantilla incremental para el ámbito `extension`.
 - `supabase/seeds/catalog.example.sql`: seed completo generado, transaccional;
   plantilla segura sin confirmación, generada sin tablas temporales.
   Para SQL Editor se genera una copia confirmada en `work/` (paso 3).
-- `supabase/seeds/assets/vanta-demo-v1/*.png`: ocho originales. Procedencia en
+- `supabase/seeds/assets/vanta-demo-v1/*.png`: ocho originales, más cuatro nuevos
+  en `supabase/seeds/assets/vanta-demo-v2/*.png`. Procedencia en
   `supabase/seeds/assets/README.md`. No son fotos de otras tiendas.
 - `scripts/prepare-demo-catalog.mjs`: genera SQL localmente; `--check` detecta
   desactualización del SQL o fotos alteradas.
@@ -59,13 +71,13 @@ npm run demo:upload
 npm run check
 ```
 
-`demo:upload` **sin argumentos** valida los ocho archivos locales y muestra el
+`demo:upload` **sin argumentos** valida los doce archivos locales y muestra el
 plan; no necesita credenciales ni realiza solicitudes. Si se edita el JSON,
 regenerar con `npm run demo:prepare` y revisar el diff. La carga requiere las dos
 migraciones existentes ya aplicadas; no usar `supabase db reset`, `db push` ni
 semillas automáticas para este procedimiento.
 
-## 2. Tras la aprobación: subir primero las ocho fotografías
+## 2. Tras la aprobación: subir primero las doce fotografías
 
 Abrir el Dashboard y verificar explícitamente el proyecto cuyo ref es
 `evlbfjvvljbkntlozokt`. Obtener allí una credencial **secreta de servidor** o
@@ -90,11 +102,11 @@ y el dominio permitido del entorno; se mantiene la verificación TLS.
 El CLI limita el origen al proyecto VANTA exacto. Comprueba el bucket privado y
 sus límites antes de cargar; compara todos los archivos remotos existentes por
 SHA-256 y **no sobrescribe ninguno**. Carga solo faltantes con `upsert:false` y
-verifica los ocho originales descargándolos. Si falla una carga, no ejecutar el
+verifica los doce archivos descargándolos. Si falla una carga, no ejecutar el
 SQL: corregir la causa y repetir. Una repetición omite los archivos idénticos.
-Los ocho PNG deben ser menores que 5 MiB y se almacenan como `image/png`.
+Los doce PNG deben ser menores que 5 MiB y se almacenan como `image/png`.
 
-Alternativa sin clave en terminal: subir manualmente los mismos ocho archivos
+Alternativa sin clave en terminal: subir manualmente los mismos doce archivos
 mediante Storage del Dashboard, conservando exactamente `image.storage_path`
 de cada entrada del JSON. No hacer público el bucket ni reemplazar objetos
 existentes diferentes. El CLI es la opción reproducible con verificación de bytes.
@@ -156,7 +168,7 @@ En **SQL Editor del proyecto VANTA** y como operador autorizado:
    desde `DO $vanta_demo$` hasta el resumen final. No ejecutar las líneas internas
    del bloque por separado. El cierre puede usar otra etiqueta si los datos lo
    requieren; siempre copiar el archivo completo.
-4. Esperar el resultado: **8 productos / 64 variantes / 8 imágenes / 64 filas
+4. Esperar el resultado: **12 productos / 96 variantes / 12 imágenes / 96 filas
    de inventario**. Repetir este mismo archivo no duplica datos ni repone stock.
 
 Todas las escrituras, controles y bloqueos viven en **una única sentencia DO
@@ -219,17 +231,21 @@ vanta-demo-v1/pantalon-forma/front.png
 vanta-demo-v1/pantalon-cargo/front.png
 vanta-demo-v1/conjunto-studio/front.png
 vanta-demo-v1/conjunto-weekend/front.png
+vanta-demo-v2/remera-oversize-hueso/front.png
+vanta-demo-v2/buzo-essential-melange/front.png
+vanta-demo-v2/pantalon-relaxed-piedra/front.png
+vanta-demo-v2/conjunto-urban-gris-claro/front.png
 ```
 
 Por ejemplo, `assets/vanta-demo-v1/remera-essential.png` es el archivo local,
 pero **no** su ruta remota. No usar `vanta-demo-v1/remera-essential.png` en Storage.
 La validación compartida rechaza ese formato antiguo. Las regresiones verifican
-la igualdad exacta JSON → SQL → `product_images.storage_path`, y que el seed
+la igualdad exacta de ambos JSON → SQL → `product_images.storage_path`, y que el seed
 aborta sin publicar si solo existen objetos en la raíz.
 
 ### Idempotencia y colisiones
 
-UUID, slugs, SKU y rutas son deterministas y exclusivos de `vanta-demo-v1`.
+UUID, slugs, SKU y rutas son deterministas y exclusivos de los namespaces `vanta-demo-v1` y `vanta-demo-v2`.
 Las cuatro categorías se reutilizan por slug únicamente si sus nombres coinciden
 y están activas. Las nuevas se crean activas. No se cambia una categoría oculta.
 Ningún registro existente se actualiza: diferencias de ID, slug, contenido, SKU,
@@ -240,7 +256,7 @@ serializa la operación; realizar la carga fuera de otras tareas de edición.
 
 El viejo seed local usaba otros slugs: si alguien lo cargó anteriormente, esos
 registros no se borran ni se renombran automáticamente. La carga agrega solamente
-estos ocho modelos con prefijo `vanta-demo-`; puede haber otros productos en el
+estos doce modelos con prefijo `vanta-demo-`; puede haber otros productos en el
 proyecto. Cualquier limpieza requiere una revisión separada. No se recorren ni
 modifican otros proyectos, buckets o prefijos.
 
@@ -266,12 +282,14 @@ where p.slug in (
   'vanta-demo-remera-essential','vanta-demo-remera-box',
   'vanta-demo-buzo-core','vanta-demo-buzo-relax',
   'vanta-demo-pantalon-forma','vanta-demo-pantalon-cargo',
-  'vanta-demo-conjunto-studio','vanta-demo-conjunto-weekend'
+  'vanta-demo-conjunto-studio','vanta-demo-conjunto-weekend',
+  'vanta-demo-remera-oversize-hueso','vanta-demo-buzo-essential-melange',
+  'vanta-demo-pantalon-relaxed-piedra','vanta-demo-conjunto-urban-gris-claro'
 )
 group by c.name,p.id order by c.name,p.name;
 ```
 
-Esperado inicialmente: ocho filas, 8 variantes, 1 imagen y 48 unidades por
+Esperado inicialmente: doce filas, 8 variantes, 1 imagen y 48 unidades por
 producto. Al repetir después de cambios de stock, las cantidades pueden diferir.
 
 Finalmente, con **solo las dos variables públicas ya configuradas**:

@@ -101,7 +101,9 @@ La disponibilidad real no se expone con las políticas actuales: las variantes s
 identifican como publicadas y el stock como pendiente de confirmación. No se
 inventan descuentos por transferencia. El catálogo demo propuesto se mantiene
 separado en `supabase/seeds/catalog.example.sql` y no se ejecuta automáticamente.
-Incluye ocho productos ficticios, variantes, inventario y fotografías originales.
+Incluye doce productos ficticios, variantes, inventario y fotografías originales.
+Para ampliar los ocho modelos existentes, usar el alcance incremental de cuatro
+modelos en [docs/demo-catalog-extension.md](docs/demo-catalog-extension.md).
 La carga remota está pendiente de aprobación; procedimiento y controles en
 [docs/demo-catalog-load.md](docs/demo-catalog-load.md).
 

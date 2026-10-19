@@ -1,0 +1,100 @@
+{
+  "project_ref": "evlbfjvvljbkntlozokt",
+  "bucket": "product-images",
+  "sizes": [
+    "S",
+    "M",
+    "L",
+    "XL"
+  ],
+  "on_hand_per_variant": 6,
+  "categories": [
+    {
+      "name": "Remeras",
+      "slug": "remeras"
+    },
+    {
+      "name": "Buzos",
+      "slug": "buzos"
+    },
+    {
+      "name": "Pantalones",
+      "slug": "pantalones"
+    },
+    {
+      "name": "Conjuntos",
+      "slug": "conjuntos"
+    }
+  ],
+  "version": "vanta-demo-v2",
+  "products": [
+    {
+      "slug": "vanta-demo-remera-oversize-hueso",
+      "name": "Remera Oversize Hueso — DEMO",
+      "category_slug": "remeras",
+      "description": "Remera lisa de corte oversize, hombros caídos y silueta amplia. Fotografía principal en blanco hueso. Producto y precio ficticios para revisión de VANTA. Fotografía original generada con IA; ilustrativa del color principal, no de todas las variantes. No constituye una oferta comercial.",
+      "price_cents": 2700000,
+      "colors": [
+        "Blanco Hueso",
+        "Negro"
+      ],
+      "image": {
+        "file": "assets/vanta-demo-v2/remera-oversize-hueso.png",
+        "storage_path": "vanta-demo-v2/remera-oversize-hueso/front.png",
+        "alt": "Remera Oversize Hueso; fotografía ilustrativa original generada con IA en blanco hueso",
+        "sha256": "3baa10a7ddf1d7dc0ef46a31fbe2dd572f3a7288b7d04cb4a159194c7bad6a03"
+      }
+    },
+    {
+      "slug": "vanta-demo-buzo-essential-melange",
+      "name": "Buzo Essential Melange — DEMO",
+      "category_slug": "buzos",
+      "description": "Buzo amplio con capucha y diseño minimalista. Fotografía principal en gris melange claro. Producto y precio ficticios para revisión de VANTA. Fotografía original generada con IA; ilustrativa del color principal, no de todas las variantes. No constituye una oferta comercial.",
+      "price_cents": 5300000,
+      "colors": [
+        "Gris Melange",
+        "Grafito"
+      ],
+      "image": {
+        "file": "assets/vanta-demo-v2/buzo-essential-melange.png",
+        "storage_path": "vanta-demo-v2/buzo-essential-melange/front.png",
+        "alt": "Buzo Essential Melange; fotografía ilustrativa original generada con IA en gris melange",
+        "sha256": "f601e1dc0d7e1dc9e9cc057e03fd1cf74fab67d13a3571cd45e0646e5ea7bf64"
+      }
+    },
+    {
+      "slug": "vanta-demo-pantalon-relaxed-piedra",
+      "name": "Pantalón Relaxed Piedra — DEMO",
+      "category_slug": "pantalones",
+      "description": "Pantalón de corte relajado, pierna amplia y estética urbana. Fotografía principal en beige piedra. Producto y precio ficticios para revisión de VANTA. Fotografía original generada con IA; ilustrativa del color principal, no de todas las variantes. No constituye una oferta comercial.",
+      "price_cents": 5000000,
+      "colors": [
+        "Beige Piedra",
+        "Negro"
+      ],
+      "image": {
+        "file": "assets/vanta-demo-v2/pantalon-relaxed-piedra.png",
+        "storage_path": "vanta-demo-v2/pantalon-relaxed-piedra/front.png",
+        "alt": "Pantalón Relaxed Piedra; fotografía ilustrativa original generada con IA en beige piedra",
+        "sha256": "06591ecfe7327ca3487ac99de98f4347676f948c9c1f549724ec05ab8ee12810"
+      }
+    },
+    {
+      "slug": "vanta-demo-conjunto-urban-gris-claro",
+      "name": "Conjunto Urban Gris Claro — DEMO",
+      "category_slug": "conjuntos",
+      "description": "Conjunto urbano de buzo y pantalón de calce relajado. Fotografía principal en gris claro. Producto y precio ficticios para revisión de VANTA. Fotografía original generada con IA; ilustrativa del color principal, no de todas las variantes. No constituye una oferta comercial.",
+      "price_cents": 7800000,
+      "colors": [
+        "Gris Claro",
+        "Grafito"
+      ],
+      "image": {
+        "file": "assets/vanta-demo-v2/conjunto-urban-gris-claro.png",
+        "storage_path": "vanta-demo-v2/conjunto-urban-gris-claro/front.png",
+        "alt": "Conjunto Urban Gris Claro; fotografía ilustrativa original generada con IA en gris claro",
+        "sha256": "cb02360aee759a8818f5ecad9976a7739d309ec5c211d9ac7c7936d019781815"
+      }
+    }
+  ]
+}

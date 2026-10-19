@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { catalog, PROJECT_REF, ROOT } from '../../scripts/demo-catalog.mjs';
+import { catalog, selectCatalog, PROJECT_REF, ROOT } from '../../scripts/demo-catalog.mjs';
 import { buildDemoSql, runGenerator } from '../../scripts/prepare-demo-catalog.mjs';
 const folders: string[]=[];
 afterEach(()=>{ vi.restoreAllMocks(); for(const folder of folders.splice(0)) rmSync(folder,{recursive:true,force:true}); });
@@ -15,9 +15,22 @@ describe('Generador permanente del seed para SQL Editor',()=>{
     const output=resolve(folder,'load.sql');
     vi.spyOn(console,'log').mockImplementation(()=>{});
     runGenerator([`--confirm-project=${PROJECT_REF}`,`--output=${output}`]);
-    expect(readFileSync(output,'utf8')).toBe(buildDemoSql(catalog(),PROJECT_REF));
+    expect(readFileSync(output,'utf8')).toBe(buildDemoSql(selectCatalog(),PROJECT_REF));
     expect(readFileSync(resolve(ROOT,'supabase/seeds/catalog.example.sql'),'utf8')).toBe(template);
     expect(template).toContain("confirmed_project_ref constant text := '';");
+  });
+  it('genera la ampliación explícita con solo cuatro productos y conserva la plantilla completa',()=>{
+    mkdirSync(resolve(ROOT,'work'),{recursive:true});
+    const folder=mkdtempSync(resolve(ROOT,'work/demo-generator-test-'));
+    folders.push(folder);
+    const output=resolve(folder,'extension.sql');
+    vi.spyOn(console,'log').mockImplementation(()=>{});
+    runGenerator(['--scope=extension',`--confirm-project=${PROJECT_REF}`,`--output=${output}`]);
+    expect(readFileSync(output,'utf8')).toBe(buildDemoSql(selectCatalog('extension'),PROJECT_REF));
+    expect(readFileSync(resolve(ROOT,'supabase/seeds/catalog.extension.sql'),'utf8')).toBe(buildDemoSql(selectCatalog('extension')));
+  });
+  it('rechaza ámbitos desconocidos antes de generar SQL',()=>{
+    expect(()=>runGenerator(['--scope=otro'])).toThrow(/Ámbito/);
   });
   it('rechaza otro proyecto y no genera un archivo ejecutable',()=>{
     mkdirSync(resolve(ROOT,'work'),{recursive:true});
@@ -40,7 +53,7 @@ describe('Generador permanente del seed para SQL Editor',()=>{
     const output=resolve(folder,'new','nested','load.sql');
     vi.spyOn(console,'log').mockImplementation(()=>{});
     runGenerator([`--confirm-project=${PROJECT_REF}`,`--output=${output}`]);
-    expect(readFileSync(output,'utf8')).toBe(buildDemoSql(catalog(),PROJECT_REF));
+    expect(readFileSync(output,'utf8')).toBe(buildDemoSql(selectCatalog(),PROJECT_REF));
   });
   // Windows symlink creation may require developer mode/admin privileges. The
   // path rules above are tested on all hosts; this filesystem check runs on Unix.
