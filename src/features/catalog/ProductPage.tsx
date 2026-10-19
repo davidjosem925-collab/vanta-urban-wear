@@ -4,6 +4,7 @@ import { Photo } from "../../components/Photo";
 import { formatARS, orderedSizes, selectedVariant } from "./model";
 import type { CatalogProduct, CatalogService } from "./service";
 import { useAsync } from "./useAsync";
+import { AddToCart } from "../cart/AddToCart";
 
 function ProductDetail({
   product,
@@ -128,6 +129,7 @@ function ProductDetail({
             La publicación de una variante no confirma unidades disponibles.
             Esta tienda ficticia todavía no acepta compras.
           </p>
+          <AddToCart product={product} color={color} size={size} />
           <div className="detail-facts">
             <p>
               <span>01</span> Siluetas para todos los días.

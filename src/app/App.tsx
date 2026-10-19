@@ -9,6 +9,8 @@ import {
 } from "../features/catalog/service";
 import { Feedback } from "../components/Feedback";
 import { useRoute } from "./router";
+import { CartProvider } from "../features/cart/CartProvider";
+import { CartDrawer, CartTrigger } from "../features/cart/CartDrawer";
 
 function Home({ service }: { service: CatalogService }) {
   return (
@@ -123,6 +125,13 @@ export function App({
 }: {
   service?: CatalogService;
 }) {
+  return (
+    <CartProvider service={service}>
+      <AppShell service={service} />
+    </CartProvider>
+  );
+}
+function AppShell({ service }: { service: CatalogService }) {
   const { route, routeKey } = useRoute();
   const [menuOpen, setMenuOpen] = useState(false);
   const pageTitle =
@@ -216,9 +225,12 @@ export function App({
               </a>
             ))}
           </nav>
-          <span className="header-caption">
-            HECHO PARA LA CIUDAD <ArrowIcon />
-          </span>
+          <div className="header-actions">
+            <span className="header-caption">
+              HECHO PARA LA CIUDAD <ArrowIcon />
+            </span>
+            <CartTrigger beforeOpen={() => setMenuOpen(false)} />
+          </div>
         </div>
       </header>
       <main id="contenido" tabIndex={-1} key={routeKey}>
@@ -301,6 +313,7 @@ export function App({
           <span>DISEÑADO PARA LO ESENCIAL.</span>
         </div>
       </footer>
+      <CartDrawer />
     </>
   );
 }

@@ -65,7 +65,7 @@ describe("Tienda VANTA", () => {
     expect(screen.getByText(/No acepta compras/)).toBeVisible();
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /comprar|carrito|registr/i }),
+      screen.queryByRole("button", { name: /comprar|registr/i }),
     ).not.toBeInTheDocument();
   });
   it("abre y cierra navegación móvil con Escape", () => {

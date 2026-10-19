@@ -35,6 +35,7 @@ de secretos. No versionar `.env.local`.
 | `npm run lint` | ESLint, sin warnings |
 | `npm test` | Pruebas de UI, configuración y SQL/RLS embebido |
 | `npm run test:watch` | Pruebas en modo desarrollo |
+| `npm run test:e2e` | Carrito en Chromium: escritorio y dos tamaños móviles, sin tráfico remoto |
 | `npm run check` | Lint + pruebas + build |
 | `npm run verify:supabase` | Verificar lectura real con variables privadas configuradas |
 
@@ -109,4 +110,18 @@ La carga remota está pendiente de aprobación; procedimiento y controles en
 
 El alcance descrito en la sección de etapa 1 queda como registro de esa entrega;
 el estado actual y su validación se detallan en [docs/stage-2-review.md](docs/stage-2-review.md).
-Carrito, checkout, pagos reales y panel siguen fuera de alcance.
+Checkout, pagos reales y panel siguen fuera de alcance.
+
+## VANTA — Etapa 3
+
+Carrito funcional con selección obligatoria de talle/color, cantidades, agrupación
+por variante, panel lateral accesible, subtotales y total en centavos ARS. La
+selección persiste en `localStorage`; precios, variantes publicadas e imágenes
+firmadas se vuelven a consultar al catálogo público. Stock por confirmar.
+
+No crea pedidos, reservas ni pagos y no requiere migraciones ni cargas remotas.
+La continuación de compra permanece deshabilitada. Límites: 10 unidades por
+variante y 30 variantes por carrito, sin representar disponibilidad real.
+
+Arquitectura, prueba local, validación y pendientes en
+[docs/stage-3-cart.md](docs/stage-3-cart.md).
