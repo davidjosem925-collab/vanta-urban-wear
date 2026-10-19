@@ -99,8 +99,11 @@ El cliente público solo consulta datos; no escribe productos, pedidos o stock.
 
 La disponibilidad real no se expone con las políticas actuales: las variantes se
 identifican como publicadas y el stock como pendiente de confirmación. No se
-inventan descuentos por transferencia. El seed opcional de desarrollo se mantiene
+inventan descuentos por transferencia. El catálogo demo propuesto se mantiene
 separado en `supabase/seeds/catalog.example.sql` y no se ejecuta automáticamente.
+Incluye ocho productos ficticios, variantes, inventario y fotografías originales.
+La carga remota está pendiente de aprobación; procedimiento y controles en
+[docs/demo-catalog-load.md](docs/demo-catalog-load.md).
 
 El alcance descrito en la sección de etapa 1 queda como registro de esa entrega;
 el estado actual y su validación se detallan en [docs/stage-2-review.md](docs/stage-2-review.md).

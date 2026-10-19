@@ -57,3 +57,21 @@ No se publicaron claves, no se modificaron migraciones, no se insertaron datos
 remotos, no se ejecutó el seed ni se desplegó la tienda. No incluye carrito,
 checkout, pagos ni panel. Los cambios se entregan en una nueva rama y PR, sin
 fusión automática ni cambios en Burger House u otros repositorios.
+
+## Preparación del catálogo demo para revisión
+
+Se reemplazó el seed local mínimo por una propuesta revisable de ocho productos
+(dos por categoría), 64 variantes, 64 filas de inventario y ocho fotografías
+originales generadas con IA. Herramientas locales y carga explícita de Storage,
+con controles de proyecto, integridad, conflictos e idempotencia.
+
+Se ejecutan pruebas adicionales sobre las migraciones actuales en PostgreSQL
+embebido y sobre Storage simulado: repetición sin duplicados, preservación del
+stock/reservas y datos ajenos, rollback ante conflictos, requisitos previos, RLS,
+fotos diferentes y reanudación de cargas parciales.
+
+**No se ejecutó el seed ni la carga de imágenes contra Supabase remoto.**
+No se cambiaron migraciones, RLS ni código del frontend. Ver
+[demo-catalog-load.md](demo-catalog-load.md) para archivos, comandos exactos y
+verificación posterior a la aprobación. La verificación pendiente descrita más
+arriba corresponde al registro histórico de la primera entrega.

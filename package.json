@@ -14,7 +14,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run lint && npm run test && npm run build",
-    "verify:supabase": "node --experimental-strip-types scripts/verify-supabase.mjs"
+    "verify:supabase": "node --experimental-strip-types scripts/verify-supabase.mjs",
+    "demo:prepare": "node scripts/prepare-demo-catalog.mjs",
+    "demo:check": "node scripts/prepare-demo-catalog.mjs --check",
+    "demo:upload": "node scripts/upload-demo-images.mjs"
   },
   "dependencies": {
     "react": "^19.1.0",

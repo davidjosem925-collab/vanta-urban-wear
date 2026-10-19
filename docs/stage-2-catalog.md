@@ -87,13 +87,13 @@ No se abrió ese acceso ni se incluyó una migración adicional en esta etapa.
 la base. Se informa “Precio por transferencia: a confirmar. No hay un descuento
 publicado.” No se calcula un porcentaje ni se anuncia un precio inventado.
 
-`supabase/seeds/catalog.example.sql` es un seed separado, opcional para una base
-**local descartable** tras las migraciones. No se ejecutó automáticamente ni en
-remoto. Contiene categorías, productos y variantes ficticios; no incluye stock,
-compradores ni pagos. No sobrescribe registros existentes con igual slug. Para
-fotografías reales, subir archivos propios/autorizados al bucket mediante un
-administrador y asociar `storage_path`, `alt` y `position` en `product_images`.
-No cargar este seed ni assets al proyecto real sin aprobación.
+`supabase/seeds/catalog.example.sql` prepara ahora ocho productos de demostración,
+64 variantes e inventario ficticio, junto con ocho fotografías originales generadas
+con IA. No se ejecuta automáticamente ni se ha cargado en remoto. La fuente está en
+`supabase/seeds/catalog.demo.json`. El procedimiento de aprobación, carga separada
+de Storage, controles de colisiones y repetición sin reponer stock se documenta en
+[demo-catalog-load.md](demo-catalog-load.md). No ejecutar sin aprobar previamente
+el destino VANTA. No modifica RLS ni habilita lectura pública del inventario.
 
 Comandos de revisión:
 

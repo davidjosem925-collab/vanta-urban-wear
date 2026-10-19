@@ -1,0 +1,140 @@
+{
+  "version": "vanta-demo-v1",
+  "project_ref": "evlbfjvvljbkntlozokt",
+  "bucket": "product-images",
+  "sizes": [
+    "S",
+    "M",
+    "L",
+    "XL"
+  ],
+  "colors": [
+    "Negro",
+    "Grafito"
+  ],
+  "on_hand_per_variant": 6,
+  "categories": [
+    {
+      "name": "Remeras",
+      "slug": "remeras"
+    },
+    {
+      "name": "Buzos",
+      "slug": "buzos"
+    },
+    {
+      "name": "Pantalones",
+      "slug": "pantalones"
+    },
+    {
+      "name": "Conjuntos",
+      "slug": "conjuntos"
+    }
+  ],
+  "products": [
+    {
+      "slug": "vanta-demo-remera-essential",
+      "name": "Remera Essential — DEMO",
+      "category_slug": "remeras",
+      "description": "Remera de algodón de corte amplio, cuello redondo y terminaciones limpias. Producto y precio ficticios para revisión de VANTA. Fotografía original generada con IA; ilustrativa del modelo y no de todas las variantes de color. No constituye una oferta comercial.",
+      "price_cents": 2500000,
+      "image": {
+        "file": "assets/vanta-demo-v1/remera-essential.png",
+        "storage_path": "vanta-demo-v1/remera-essential/front.png",
+        "alt": "Remera Essential; imagen ilustrativa original generada con IA para demostración",
+        "sha256": "28008846b40059e0f5a7ba70facc4d70554fee2391ff17b858914def3537dc47"
+      }
+    },
+    {
+      "slug": "vanta-demo-remera-box",
+      "name": "Remera Box — DEMO",
+      "category_slug": "remeras",
+      "description": "Remera de silueta boxy en algodón pesado, con bolsillo discreto en el pecho. Producto y precio ficticios para revisión de VANTA. Fotografía original generada con IA; ilustrativa del modelo y no de todas las variantes de color. No constituye una oferta comercial.",
+      "price_cents": 2900000,
+      "image": {
+        "file": "assets/vanta-demo-v1/remera-box.png",
+        "storage_path": "vanta-demo-v1/remera-box/front.png",
+        "alt": "Remera Box; imagen ilustrativa original generada con IA para demostración",
+        "sha256": "27324397e747692db1eedd85a8f9dce9d2ca226d64acb130fd60649c7f687714"
+      }
+    },
+    {
+      "slug": "vanta-demo-buzo-core",
+      "name": "Buzo Core — DEMO",
+      "category_slug": "buzos",
+      "description": "Buzo con capucha, bolsillo canguro y calce amplio para superponer capas. Producto y precio ficticios para revisión de VANTA. Fotografía original generada con IA; ilustrativa del modelo y no de todas las variantes de color. No constituye una oferta comercial.",
+      "price_cents": 5500000,
+      "image": {
+        "file": "assets/vanta-demo-v1/buzo-core.png",
+        "storage_path": "vanta-demo-v1/buzo-core/front.png",
+        "alt": "Buzo Core; imagen ilustrativa original generada con IA para demostración",
+        "sha256": "1d26a27c8a5e7f039abae2194d84253a9db0fd1bc4959b39162dbb6ba38a1f03"
+      }
+    },
+    {
+      "slug": "vanta-demo-buzo-relax",
+      "name": "Buzo Relax — DEMO",
+      "category_slug": "buzos",
+      "description": "Buzo de cuello redondo, hombros caídos y puños acanalados. Producto y precio ficticios para revisión de VANTA. Fotografía original generada con IA; ilustrativa del modelo y no de todas las variantes de color. No constituye una oferta comercial.",
+      "price_cents": 4900000,
+      "image": {
+        "file": "assets/vanta-demo-v1/buzo-relax.png",
+        "storage_path": "vanta-demo-v1/buzo-relax/front.png",
+        "alt": "Buzo Relax; imagen ilustrativa original generada con IA para demostración",
+        "sha256": "8921cde01f06248d1bb7a55101323ac5fe91f2af514a7b7f2426b9ac062211dd"
+      }
+    },
+    {
+      "slug": "vanta-demo-pantalon-forma",
+      "name": "Pantalón Forma — DEMO",
+      "category_slug": "pantalones",
+      "description": "Pantalón urbano de pierna amplia y líneas de sastrería relajada. Producto y precio ficticios para revisión de VANTA. Fotografía original generada con IA; ilustrativa del modelo y no de todas las variantes de color. No constituye una oferta comercial.",
+      "price_cents": 4800000,
+      "image": {
+        "file": "assets/vanta-demo-v1/pantalon-forma.png",
+        "storage_path": "vanta-demo-v1/pantalon-forma/front.png",
+        "alt": "Pantalón Forma; imagen ilustrativa original generada con IA para demostración",
+        "sha256": "4ce2af4bca5994ad23d3e2b17db3b1c4ecb51764c08a14568f111a898147b816"
+      }
+    },
+    {
+      "slug": "vanta-demo-pantalon-cargo",
+      "name": "Pantalón Cargo — DEMO",
+      "category_slug": "pantalones",
+      "description": "Pantalón de corte relajado con bolsillos utilitarios y terminaciones sobrias. Producto y precio ficticios para revisión de VANTA. Fotografía original generada con IA; ilustrativa del modelo y no de todas las variantes de color. No constituye una oferta comercial.",
+      "price_cents": 5200000,
+      "image": {
+        "file": "assets/vanta-demo-v1/pantalon-cargo.png",
+        "storage_path": "vanta-demo-v1/pantalon-cargo/front.png",
+        "alt": "Pantalón Cargo; imagen ilustrativa original generada con IA para demostración",
+        "sha256": "59f0c335a7ff745bc037d1b5a285b7c8fd7fedee3c81f95ab6852f282a09e07b"
+      }
+    },
+    {
+      "slug": "vanta-demo-conjunto-studio",
+      "name": "Conjunto Studio — DEMO",
+      "category_slug": "conjuntos",
+      "description": "Conjunto de campera con cierre y pantalón recto, de estética monocromática. Producto y precio ficticios para revisión de VANTA. Fotografía original generada con IA; ilustrativa del modelo y no de todas las variantes de color. No constituye una oferta comercial.",
+      "price_cents": 8000000,
+      "image": {
+        "file": "assets/vanta-demo-v1/conjunto-studio.png",
+        "storage_path": "vanta-demo-v1/conjunto-studio/front.png",
+        "alt": "Conjunto Studio; imagen ilustrativa original generada con IA para demostración",
+        "sha256": "a3fada61441a8ad1267d0a6b85156e222c857eb99fb38860ed2e640bf8d68a12"
+      }
+    },
+    {
+      "slug": "vanta-demo-conjunto-weekend",
+      "name": "Conjunto Weekend — DEMO",
+      "category_slug": "conjuntos",
+      "description": "Conjunto de buzo de cuello redondo y jogger amplio para todos los días. Producto y precio ficticios para revisión de VANTA. Fotografía original generada con IA; ilustrativa del modelo y no de todas las variantes de color. No constituye una oferta comercial.",
+      "price_cents": 7600000,
+      "image": {
+        "file": "assets/vanta-demo-v1/conjunto-weekend.png",
+        "storage_path": "vanta-demo-v1/conjunto-weekend/front.png",
+        "alt": "Conjunto Weekend; imagen ilustrativa original generada con IA para demostración",
+        "sha256": "7aa631cabdf859bf72402fdb387e53ef1176d479be5f4e2497ceb645caef06ea"
+      }
+    }
+  ]
+}
