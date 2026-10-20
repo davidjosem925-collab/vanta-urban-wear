@@ -74,7 +74,7 @@ Ejemplo ilustrativo, sin valores de una ejecución real:
 | Operación / fase / resultado | Interpretación y siguiente comprobación |
 |---|---|
 | siteverify / request / network_error | Fetch lanzó antes de obtener respuesta; revisar conectividad de salida de la Edge con el operador. No se capturan DNS, certificados ni mensajes crudos. |
-| siteverify / request / http_error | Cloudflare devolvió HTTP no 2xx; `upstream_status` contiene su estado, separado del 503 público. No se lee ni registra ese cuerpo. |
+| siteverify / request / http_error | Cloudflare devolvió HTTP no 2xx; `upstream_status` contiene su estado, separado del 503 público. Para HTTP 400 se inspeccionan solo los códigos permitidos del JSON; nunca se registra el cuerpo. Otros HTTP no exitosos conservan la salida genérica sin leerlo. |
 | siteverify / request o body / timeout | Se abortó el plazo o se recibió excepción de timeout/abort; el tiempo del paso permite contrastarlo con 8000 ms. |
 | siteverify / body / invalid_json | Se obtuvo HTTP 2xx pero el cuerpo no pudo parsearse como JSON. |
 | siteverify / body / network_error | La lectura del cuerpo falló por transporte, después de obtener cabeceras. |
@@ -154,3 +154,73 @@ hostname/acción, cada RPC, detalles PostgREST filtrados, configuración de plaz
 cableado real de `index.ts`, ausencia de secretos en logs y fallo del logger sin
 repetir creación. Conserva las suites de recuperación, idempotencia y stock.
 Resultados finales y CI se consignan en la PR #6.
+
+
+## Ajuste específico: Siteverify HTTP 400
+
+Evidencia posterior aportada por el operador: 20/10/2026, 18:14:25 Argentina
+(21:14:25 UTC), límite y replay correctos, Siteverify HTTP 400 en 55 ms. Esto
+confirma rechazo HTTP, no timeout, pero no identifica todavía su causa.
+
+Se contrastó el envío con la [documentación oficial de Cloudflare](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/):
+POST al endpoint exacto, `application/x-www-form-urlencoded`, `URLSearchParams`
+con los dos campos obligatorios `secret` y `response`. No necesita Authorization,
+apikey de Supabase, IP, Origin ni encabezados adicionales para Siteverify.
+No se encontró un defecto de codificación del formulario: no se cambió el envío
+ni se sustituyó a ciegas por JSON. El defecto comprobado era descartar el JSON de
+HTTP 400 antes de examinar los códigos de error.
+
+Ahora se conserva `request/http_error/upstream_status:400`, se intenta parsear su
+JSON y se registra `validation/rejected`, el mismo estado upstream y solo un
+`reason` permitido. Los motivos de secreto devuelven públicamente CHALLENGE_CONFIG
+(503); token consumido/vencido, CHALLENGE_EXPIRED (403); rechazo conocido,
+CHALLENGE_REJECTED (403); fallo interno, CHALLENGE_UNAVAILABLE (503). Así no se
+confunde el HTTP 400 de Cloudflare con el estado público de nuestra Edge.
+
+Un 400 sin JSON válido, con estructura inválida o código desconocido conserva
+CHALLENGE_UNAVAILABLE (503), con diagnóstico acotado de parseo/estructura/other.
+**Incluso un HTTP 400 con `success:true` se rechaza con 503 y jamás llega a
+admisión/creación.** Solo HTTP exitoso + success booleano true + hostname/acción
+correctos puede seguir. No hay nuevos reintentos ni cambios de reservas o límites.
+
+### Comprobación manual según el motivo
+
+| reason | Qué revisar sin compartir ni registrar valores |
+|---|---|
+| invalid-input-secret | TURNSTILE_SECRET_KEY debe ser la secret key vigente del mismo widget de Cloudflare que corresponde a VITE_TURNSTILE_SITE_KEY. No usar la site key pública, un token de API de Cloudflare ni una clave de Supabase como secreto. Revisar rotaciones y que no se mezclen claves de prueba y reales. |
+| missing-input-secret | El proveedor no reconoció el parámetro. Revisar el despliegue efectivo, nombre de variable y pegado sin comillas, espacios o saltos de línea accidentales. El handler ya impide enviar una configuración vacía; no asumir que el campo remoto está vacío solo por este motivo. |
+| invalid-input-response | Verificar que frontend y secreto pertenezcan al mismo widget/entorno, que se use el token del callback real y que sea nuevo. No enviar textos de éxito ni objetos del widget. Los tokens duran 300 segundos y son de un solo uso. |
+| missing-input-response | Revisar versión desplegada y transmisión del formulario: el handler ya exige token no vacío. No imprimir el token ni registrar el cuerpo para investigarlo. |
+| timeout-or-duplicate | Nueva verificación, conservando la misma identidad del intento; no probar el token también por curl ni reenviarlo manualmente a Siteverify, porque se consume. Esto no es el timeout de red de 8000 ms. |
+| bad-request | Cloudflare considera malformada la solicitud. Confirmar que se desplegó esta versión y contrastar los tests de codificación, antes de cambiar transporte, encabezados o secretos por conjetura. |
+| internal-error | Fallo interno del proveedor; conservar intento y límites, sin cambiar credenciales automáticamente. |
+| other, invalid_json o invalid_response | El 400 no se puede clasificar con seguridad. Conservar solo hora/estado/diagnóstico permitido para revisión del operador o soporte, sin exportar cuerpos, HAR o secretos. |
+
+Además, comprobar en el widget los hostnames permitidos y el entorno local:
+localhost y 127.0.0.1 no son intercambiables; el origen incluye puerto y el hostname
+no. Esta comprobación no demuestra que un hostname sea la causa del HTTP 400.
+Después de un cambio público aprobado se debe reiniciar Vite o reconstruir el
+frontend para que use la site key correspondiente. Esta corrección no cambia
+ninguna de esas configuraciones ni recorta silenciosamente secretos con trim().
+
+### Compatibilidad y prueba única
+
+`supabase/tests/siteverify.deno.ts` usa el handler real, un servidor HTTP local y
+Fetch nativo de Deno. Verifica método, tipo de contenido, los dos campos exactos,
+caracteres reservados/Unicode, ausencia de claves de Supabase en Siteverify y los
+casos 200 válido, 400 de secreto y 400 con éxito contradictorio. Se ejecutó con
+Deno 2.5.4: **3 pruebas aprobadas**, sin acceso a Cloudflare ni Supabase. Esto no
+certifica la versión/configuración exacta de la Edge alojada.
+
+```sh
+deno test --no-config --allow-net=127.0.0.1 supabase/tests/siteverify.deno.ts
+```
+
+Tras aprobar y desplegar manualmente solo la Edge de esta rama, repetir el
+procedimiento de una única confirmación de esta guía: misma pestaña/identidad,
+verificación nueva y un solo clic. Buscar el evento por hora. Si sigue el 400,
+el paso de validación debe mostrar ahora `reason`; si aparece solo el paso de
+solicitud, comprobar que la actualización se desplegó realmente. Consultar los
+agregados de solo lectura antes/después. No repetir confirmaciones, no borrar
+sessionStorage ni reaplicar SQL para investigar este fallo. No se ejecutó esta
+prueba real desde el entorno de desarrollo.

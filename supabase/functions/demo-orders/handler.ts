@@ -288,7 +288,10 @@ export function makeHandler(
           verificationStarted,
           challengeResponse.status,
         );
-        if (!challengeResponse.ok) return reply(503, "CHALLENGE_UNAVAILABLE");
+        // HTTP 400 can carry Siteverify's validation JSON. Inspect only its safe
+        // codes; no non-2xx response may ever authorize creation.
+        if (!challengeResponse.ok && challengeResponse.status !== 400)
+          return reply(503, "CHALLENGE_UNAVAILABLE");
         const bodyStarted = performance.now();
         let challenge;
         try {
@@ -349,9 +352,11 @@ export function makeHandler(
             "validation",
             "rejected",
             validationStarted,
-            undefined,
+            challengeResponse.status,
             reason,
           );
+          if (!challengeResponse.ok && reason === "other")
+            return reply(503, "CHALLENGE_UNAVAILABLE");
           if (
             codes.includes("invalid-input-secret") ||
             codes.includes("missing-input-secret")
@@ -362,6 +367,16 @@ export function makeHandler(
           if (codes.includes("internal-error"))
             return reply(503, "CHALLENGE_UNAVAILABLE");
           return reply(403, "CHALLENGE_REJECTED");
+        }
+        if (!challengeResponse.ok) {
+          trace.record(
+            "siteverify",
+            "validation",
+            "http_error",
+            validationStarted,
+            challengeResponse.status,
+          );
+          return reply(503, "CHALLENGE_UNAVAILABLE");
         }
         if (
           challenge.hostname !== settings.challengeHostname ||

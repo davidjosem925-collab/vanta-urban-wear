@@ -544,3 +544,136 @@ it("the real Edge entrypoint wires sanitized RPC and JSON logging without enviro
   });
   assertPrivate([event], await response.json());
 });
+
+it.each([
+  ["missing-input-secret", 503, "CHALLENGE_CONFIG"],
+  ["invalid-input-secret", 503, "CHALLENGE_CONFIG"],
+  ["missing-input-response", 403, "CHALLENGE_REJECTED"],
+  ["invalid-input-response", 403, "CHALLENGE_REJECTED"],
+  ["timeout-or-duplicate", 403, "CHALLENGE_EXPIRED"],
+  ["bad-request", 403, "CHALLENGE_REJECTED"],
+  ["internal-error", 503, "CHALLENGE_UNAVAILABLE"],
+  [privateText, 503, "CHALLENGE_UNAVAILABLE"],
+] as const)(
+  "HTTP 400 validation JSON classifies %s without disclosing its body",
+  async (code, status, error) => {
+    const events: DiagnosticEvent[] = [],
+      rpc = rpcMock();
+    const response = await makeHandler(
+      settings,
+      rpc,
+      fetchMock(async () =>
+        Response.json(
+          {
+            success: false,
+            "error-codes": [code],
+            secret: settings.challengeSecret,
+            response: body.challenge,
+            details: privateText,
+          },
+          { status: 400 },
+        ),
+      ),
+      (e) => events.push(e),
+    )(request());
+    expect(response.status).toBe(status);
+    const publicBody = await response.json();
+    expect(publicBody).toEqual({ error });
+    expect(events[0].steps).toContainEqual(
+      expect.objectContaining({
+        operation: "siteverify",
+        phase: "request",
+        outcome: "http_error",
+        upstream_status: 400,
+      }),
+    );
+    expect(events[0].steps.at(-1)).toMatchObject({
+      operation: "siteverify",
+      phase: "validation",
+      outcome: "rejected",
+      upstream_status: 400,
+      reason: code === privateText ? "other" : code,
+    });
+    expect(rpc.mock.calls.map((c) => c[0])).toEqual([
+      "demo_rate_limit",
+      "demo_order_replay",
+    ]);
+    assertPrivate(events, publicBody);
+  },
+);
+it.each([
+  ["HTML", () => new Response(privateText, { status: 400 }), "invalid_json"],
+  ["null", () => Response.json(null, { status: 400 }), "invalid_response"],
+  [
+    "invalid structure",
+    () =>
+      Response.json(
+        { "error-codes": ["invalid-input-secret"], details: privateText },
+        { status: 400 },
+      ),
+    "invalid_response",
+  ],
+  [
+    "success on HTTP error",
+    () =>
+      Response.json(
+        {
+          success: true,
+          hostname: settings.challengeHostname,
+          action: "demo-order",
+        },
+        { status: 400 },
+      ),
+    "http_error",
+  ],
+] as const)(
+  "HTTP 400 %s never authorizes creation or invents a validation result",
+  async (_name, fixture, outcome) => {
+    const events: DiagnosticEvent[] = [],
+      rpc = rpcMock();
+    const response = await makeHandler(
+      settings,
+      rpc,
+      fetchMock(async () => fixture()),
+      (e) => events.push(e),
+    )(request());
+    expect(response.status).toBe(503);
+    const publicBody = await response.json();
+    expect(publicBody).toEqual({ error: "CHALLENGE_UNAVAILABLE" });
+    expect(events[0].steps.at(-1)).toMatchObject({
+      operation: "siteverify",
+      outcome,
+      upstream_status: 400,
+    });
+    expect(rpc).toHaveBeenCalledTimes(2);
+    assertPrivate(events, publicBody);
+  },
+);
+it("URLSearchParams serializes the exact two fields safely, including reserved characters, without extra headers", async () => {
+  const secret = "test +/=&%? ñ",
+    token = "token +/=&%? é";
+  const fetcher: typeof fetch = vi.fn(async (input, init) => {
+    const wire = new Request(input, init);
+    expect(wire.method).toBe("POST");
+    expect(wire.url).toBe(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+    );
+    expect(wire.headers.get("content-type")).toBe(
+      "application/x-www-form-urlencoded",
+    );
+    expect(wire.headers.has("authorization")).toBe(false);
+    expect(wire.headers.has("apikey")).toBe(false);
+    const form = await wire.formData();
+    expect([...form.keys()].sort()).toEqual(["response", "secret"]);
+    expect(form.get("secret")).toBe(secret);
+    expect(form.get("response")).toBe(token);
+    return goodChallenge();
+  });
+  const response = await makeHandler(
+    { ...settings, challengeSecret: secret },
+    rpcMock(),
+    fetcher,
+  )(request({ ...body, challenge: token }));
+  expect(response.status).toBe(200);
+  expect(fetcher).toHaveBeenCalledOnce();
+});
