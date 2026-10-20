@@ -47,7 +47,12 @@ it("shows loading, prevents simultaneous requests and only succeeds after genuin
   let resolve!: (v: Receipt) => void;
   const confirm = vi.fn(() => new Promise<Receipt>((r) => (resolve = r))),
     success = vi.fn();
-  const s: OrderService = { enabled: true, siteKey: "test", confirm };
+  const s: OrderService = {
+    enabled: true,
+    siteKey: "test",
+    recover: vi.fn().mockResolvedValue(r),
+    confirm,
+  };
   const hook = renderHook(() => useDemoOrder(s, success));
   let first!: Promise<void>;
   act(() => {
@@ -73,7 +78,12 @@ it("network failure keeps same attempt through retry and remount, without false 
       .mockRejectedValueOnce(new Error("UNAVAILABLE"))
       .mockResolvedValue(r),
     success = vi.fn();
-  const s: OrderService = { enabled: true, siteKey: "test", confirm };
+  const s: OrderService = {
+    enabled: true,
+    siteKey: "test",
+    recover: vi.fn().mockResolvedValue(r),
+    confirm,
+  };
   const first = renderHook(() => useDemoOrder(s, success));
   await act(() => first.result.current.confirm(p, "token"));
   expect(first.result.current.error).toMatch(/carrito permanece intacto/);
@@ -81,10 +91,9 @@ it("network failure keeps same attempt through retry and remount, without false 
   const a = confirm.mock.calls[0][0];
   first.unmount();
   const next = renderHook(() => useDemoOrder(s, success));
-  await act(() =>
-    next.result.current.confirm({ ...p, payment: "transfer" }, ""),
-  );
-  expect(confirm.mock.calls[1][0]).toEqual(a);
+  await act(() => next.result.current.recover());
+  expect(s.recover).toHaveBeenCalledWith(a);
+  expect(confirm).toHaveBeenCalledTimes(1);
   expect(success).toHaveBeenCalledOnce();
 });
 it("stock/price failures do not clear cart or show receipt; next review gets a new key", async () => {
@@ -99,7 +108,15 @@ it("stock/price failures do not clear cart or show receipt; next review gets a n
         .mockResolvedValue(r),
       success = vi.fn();
     const hook = renderHook(() =>
-      useDemoOrder({ enabled: true, siteKey: "test", confirm }, success),
+      useDemoOrder(
+        {
+          enabled: true,
+          siteKey: "test",
+          recover: vi.fn().mockResolvedValue(r),
+          confirm,
+        },
+        success,
+      ),
     );
     await act(() => hook.result.current.confirm(p, "token"));
     expect(success).not.toHaveBeenCalled();
@@ -117,12 +134,20 @@ it("malformed success response never becomes completed and expired replay is exp
       .mockResolvedValueOnce({ ...r, demo: false })
       .mockResolvedValueOnce({ ...r, status: "expired" });
   const hook = renderHook(() =>
-    useDemoOrder({ enabled: true, siteKey: "test", confirm }, success),
+    useDemoOrder(
+      {
+        enabled: true,
+        siteKey: "test",
+        recover: vi.fn().mockResolvedValue(r),
+        confirm,
+      },
+      success,
+    ),
   );
   await act(() => hook.result.current.confirm(p, "token"));
   await waitFor(() => expect(hook.result.current.error).toBeTruthy());
   expect(success).not.toHaveBeenCalled();
-  await act(() => hook.result.current.confirm(p, ""));
+  await act(() => hook.result.current.confirm(p, "fresh-token"));
   expect(hook.result.current.error).toMatch(/venció/);
   expect(success).not.toHaveBeenCalled();
 });
@@ -130,13 +155,15 @@ it("recovers a pending attempt even after reload with an empty or unavailable ca
   const a = newAttempt(p);
   sessionStorage.setItem("vanta.order-attempt.v1", JSON.stringify(a));
   const success = vi.fn(),
-    confirm = vi.fn().mockResolvedValue(r);
+    confirm = vi.fn(),
+    recover = vi.fn().mockResolvedValue(r);
   const hook = renderHook(() =>
-    useDemoOrder({ enabled: true, siteKey: "test", confirm }, success),
+    useDemoOrder({ enabled: true, siteKey: "test", recover, confirm }, success),
   );
   expect(hook.result.current.recoverable).toBe(true);
   await act(() => hook.result.current.recover());
-  expect(confirm).toHaveBeenCalledWith(a, "");
+  expect(recover).toHaveBeenCalledWith(a);
+  expect(confirm).not.toHaveBeenCalled();
   expect(success).toHaveBeenCalledWith(r, p);
   expect(hook.result.current.recoverable).toBe(false);
 });
@@ -145,10 +172,78 @@ it("corrupt persisted attempts fail closed instead of silently creating a fresh 
   const confirm = vi.fn(),
     success = vi.fn();
   const hook = renderHook(() =>
-    useDemoOrder({ enabled: true, siteKey: "test", confirm }, success),
+    useDemoOrder(
+      {
+        enabled: true,
+        siteKey: "test",
+        recover: vi.fn().mockResolvedValue(r),
+        confirm,
+      },
+      success,
+    ),
   );
   await act(() => hook.result.current.confirm(p, "token"));
   expect(confirm).not.toHaveBeenCalled();
   expect(hook.result.current.error).toMatch(/almacenamiento/);
   expect(sessionStorage.getItem("vanta.order-attempt.v1")).toBe("broken");
+});
+it("missing recovery returns to verification while preserving identity for a late commit", async () => {
+  const a = newAttempt(p);
+  sessionStorage.setItem("vanta.order-attempt.v1", JSON.stringify(a));
+  const success = vi.fn(),
+    confirm = vi.fn().mockResolvedValue(r),
+    recover = vi.fn().mockResolvedValue(null);
+  const hook = renderHook(() =>
+    useDemoOrder({ enabled: true, siteKey: "test", confirm, recover }, success),
+  );
+  await act(() => hook.result.current.recover());
+  expect(recover).toHaveBeenCalledWith(a);
+  expect(confirm).not.toHaveBeenCalled();
+  expect(success).not.toHaveBeenCalled();
+  expect(hook.result.current.recoverable).toBe(false);
+  expect(hook.result.current.notice).toMatch(/Volvé a la revisión/);
+  expect(readAttempt(sessionStorage.getItem("vanta.order-attempt.v1"))).toEqual(
+    a,
+  );
+  await act(() => hook.result.current.confirm(p, "fresh-token"));
+  expect(confirm).toHaveBeenCalledWith(a, "fresh-token");
+  expect(success).toHaveBeenCalledOnce();
+});
+it("missing token makes no request or stored attempt; consumed token keeps same key for a fresh token", async () => {
+  const success = vi.fn(),
+    recover = vi.fn(),
+    confirm = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("CHALLENGE_EXPIRED"))
+      .mockResolvedValue(r);
+  const hook = renderHook(() =>
+    useDemoOrder({ enabled: true, siteKey: "test", confirm, recover }, success),
+  );
+  await act(() => hook.result.current.confirm(p, ""));
+  expect(confirm).not.toHaveBeenCalled();
+  expect(sessionStorage.length).toBe(0);
+  expect(hook.result.current.error).toMatch(/verificación/);
+  await act(() => hook.result.current.confirm(p, "consumed"));
+  expect(hook.result.current.recoverable).toBe(false);
+  expect(success).not.toHaveBeenCalled();
+  const a = confirm.mock.calls[0][0];
+  await act(() => hook.result.current.confirm(p, "fresh"));
+  expect(confirm.mock.calls[1][0]).toEqual(a);
+  expect(success).toHaveBeenCalledOnce();
+});
+it("older Edge rejecting recovery cannot erase an uncertain attempt", async () => {
+  const a = newAttempt(p);
+  sessionStorage.setItem("vanta.order-attempt.v1", JSON.stringify(a));
+  const recover = vi.fn().mockRejectedValue(new Error("INVALID_REQUEST")),
+    confirm = vi.fn(),
+    success = vi.fn();
+  const hook = renderHook(() =>
+    useDemoOrder({ enabled: true, siteKey: "test", confirm, recover }, success),
+  );
+  await act(() => hook.result.current.recover());
+  expect(readAttempt(sessionStorage.getItem("vanta.order-attempt.v1"))).toEqual(
+    a,
+  );
+  expect(confirm).not.toHaveBeenCalled();
+  expect(success).not.toHaveBeenCalled();
 });

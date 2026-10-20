@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import {
   newAttempt,
+  OrderRequestError,
   orderMessages,
   readAttempt,
   receipt,
@@ -25,11 +26,21 @@ export function useDemoOrder(
       return false;
     }
   });
+  const [notice, setNotice] = useState("");
   const inFlight = useRef(false);
   const attempt = useRef<Attempt | null>(null);
-  async function confirm(payload: OrderPayload | null, challenge: string) {
+  async function perform(
+    payload: OrderPayload | null,
+    challenge: string,
+    queryOnly: boolean,
+  ) {
     if (inFlight.current) return;
     setError("");
+    setNotice("");
+    if (!queryOnly && !challenge.trim()) {
+      setError(orderMessages.CHALLENGE_REQUIRED);
+      return;
+    }
     inFlight.current = true;
     setPending(true);
     try {
@@ -38,18 +49,36 @@ export function useDemoOrder(
           const raw = sessionStorage.getItem(storageKey);
           const recovered = readAttempt(raw);
           if (raw && !recovered) throw new Error("STORAGE");
+          if (!recovered && queryOnly) {
+            setRecoverable(false);
+            setNotice(
+              "No hay un intento pendiente. Revisá la selección para confirmar.",
+            );
+            return;
+          }
           if (!recovered && !validPayload(payload))
             throw new Error("INVALID_REQUEST");
           attempt.current = recovered ?? newAttempt(payload!);
           sessionStorage.setItem(storageKey, JSON.stringify(attempt.current));
-          setRecoverable(true);
+          setRecoverable(false);
         } catch (e) {
           if (e instanceof Error && e.message === "INVALID_REQUEST") throw e;
           throw new Error("STORAGE");
         }
       }
       const a = attempt.current;
-      const r = receipt(await service.confirm(a, challenge));
+      const result = queryOnly
+        ? await service.recover(a)
+        : await service.confirm(a, challenge);
+      if (result === null) {
+        // Keep identity/body even when absent: the original request may still commit.
+        setRecoverable(false);
+        setNotice(
+          "Todavía no hay una confirmación registrada para este intento. Volvé a la revisión y completá una nueva verificación para retomar la selección original con la misma clave.",
+        );
+        return;
+      }
+      const r = receipt(result);
       if (["expired", "cancelled"].includes(r.status))
         throw new Error("EXPIRED");
       // Call only after a validated server receipt. Never mark uncertain network results as success.
@@ -67,14 +96,16 @@ export function useDemoOrder(
           ? e.message
           : "UNAVAILABLE";
       if (
-        [
-          "PRICE_CHANGED",
-          "INSUFFICIENT_STOCK",
-          "PRODUCT_UNAVAILABLE",
-          "INVALID_REQUEST",
-          "DEMO_CAPACITY",
-          "EXPIRED",
-        ].includes(code)
+        code === "EXPIRED" ||
+        (!queryOnly &&
+          [
+            "PRICE_CHANGED",
+            "INSUFFICIENT_STOCK",
+            "PRODUCT_UNAVAILABLE",
+            "INVALID_REQUEST",
+            "DEMO_CAPACITY",
+            "EXPIRED",
+          ].includes(code))
       ) {
         attempt.current = null;
         setRecoverable(false);
@@ -84,7 +115,20 @@ export function useDemoOrder(
           /* keep UI available */
         }
       }
-      setError(orderMessages[code]);
+      const uncertain = [
+        "NETWORK_ERROR",
+        "TIMEOUT_ERROR",
+        "UNAVAILABLE",
+        "INVALID_RESPONSE",
+        "HTTP_REJECTED",
+      ].includes(code);
+      setRecoverable(uncertain && Boolean(attempt.current));
+      setError(
+        orderMessages[code] +
+          (e instanceof OrderRequestError && e.status
+            ? ` (HTTP ${e.status}).`
+            : ""),
+      );
     } finally {
       inFlight.current = false;
       setPending(false);
@@ -93,8 +137,10 @@ export function useDemoOrder(
   return {
     pending,
     error,
+    notice,
     recoverable,
-    confirm,
-    recover: () => confirm(null, ""),
+    confirm: (payload: OrderPayload, challenge: string) =>
+      perform(payload, challenge, false),
+    recover: () => perform(null, "", true),
   };
 }

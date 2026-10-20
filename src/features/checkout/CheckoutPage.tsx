@@ -177,6 +177,17 @@ export function CheckoutPage({
           </button>
         </div>
       )}
+      {orders.enabled && !finished && orderFlow.notice && (
+        <div className="checkout-notice" role="status">
+          <p>{orderFlow.notice}</p>
+          <a
+            className="cart-text-button"
+            href={valid ? "#/checkout/revision" : "#/checkout"}
+          >
+            Volver a la revisión
+          </a>
+        </div>
+      )}
       {orders.enabled && !finished && orderFlow.recoverable && (
         <div className="checkout-notice">
           <p>
@@ -603,6 +614,15 @@ export function CheckoutPage({
               />
             </div>
           )}
+          {step === "review" &&
+            orders.enabled &&
+            !challenge &&
+            !orderFlow.pending && (
+              <p className="checkout-help" role="status">
+                Completá la verificación de seguridad para habilitar «Confirmar
+                pedido demo».
+              </p>
+            )}
           <div className="checkout-actions">
             {step === "details" ? (
               <button
@@ -616,11 +636,19 @@ export function CheckoutPage({
             ) : step === "review" && valid ? (
               <button
                 className="button primary"
-                disabled={!ready || !valid || orderFlow.pending}
+                disabled={
+                  !ready ||
+                  !valid ||
+                  orderFlow.pending ||
+                  (orders.enabled && !challenge)
+                }
                 onClick={() => {
                   if (!ready || !valid) return;
                   if (orders.enabled) {
-                    void orderFlow.confirm(payload(), challenge).finally(() => {
+                    // A token is single-use. Remove it immediately, not after the request.
+                    const token = challenge;
+                    setChallenge("");
+                    void orderFlow.confirm(payload(), token).finally(() => {
                       setChallenge("");
                       setChallengeRevision((v) => v + 1);
                     });

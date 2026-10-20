@@ -48,11 +48,23 @@ export function OrderChallenge({
             theme: "dark",
             // Compact is 150px wide; the normal/flexible widget has a 300px minimum.
             size: "compact",
-            callback: (token: string) => onToken(token),
-            "expired-callback": () => onToken(""),
+            callback: (token: string) => {
+              if (active) {
+                setFailed(false);
+                onToken(token);
+              }
+            },
+            "expired-callback": () => {
+              if (active) onToken("");
+            },
+            "timeout-callback": () => {
+              if (active) onToken("");
+            },
             "error-callback": () => {
-              onToken("");
-              setFailed(true);
+              if (active) {
+                onToken("");
+                setFailed(true);
+              }
             },
           });
       })
@@ -61,6 +73,8 @@ export function OrderChallenge({
       });
     return () => {
       active = false;
+      // A token belongs to this widget, including when leaving the review step.
+      onToken("");
       if (id && window.turnstile) window.turnstile.remove(id);
     };
   }, [siteKey, onToken]);

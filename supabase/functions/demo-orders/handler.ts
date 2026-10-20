@@ -133,7 +133,7 @@ export function makeHandler(
       if (
         !b ||
         typeof b !== "object" ||
-        !["create", "cancel"].includes(b.action) ||
+        !["create", "recover", "cancel"].includes(b.action) ||
         typeof b.capability !== "string" ||
         !/^[a-f0-9]{64}$/.test(b.capability)
       )
@@ -164,13 +164,15 @@ export function makeHandler(
       }
       if (
         Object.keys(b).sort().join(",") !==
-          "action,capability,challenge,idempotency_key,payload" ||
+          (b.action === "recover"
+            ? "action,capability,idempotency_key,payload"
+            : "action,capability,challenge,idempotency_key,payload") ||
         !uuid.test(b.idempotency_key) ||
         !b.payload ||
         typeof b.payload !== "object" ||
         !validPayload(b.payload) ||
-        typeof b.challenge !== "string" ||
-        b.challenge.length > 2048
+        (b.action === "create" &&
+          (typeof b.challenge !== "string" || b.challenge.length > 2048))
       )
         return reply(400, "INVALID_REQUEST");
       const args = {
@@ -187,25 +189,54 @@ export function makeHandler(
         return reply(503, "UNAVAILABLE");
       }
       if (replay.data) return reply(200, "", replay.data);
-      const challengeResponse = await fetcher(
-        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-        {
-          method: "POST",
-          body: new URLSearchParams({
-            secret: settings.challengeSecret,
-            response: b.challenge,
-          }),
-          signal: AbortSignal.timeout(8000),
-        },
-      );
-      if (!challengeResponse.ok) return reply(503, "UNAVAILABLE");
-      const challenge = await challengeResponse.json();
+      // A query must never become a creation attempt, even if a token is supplied.
+      if (b.action === "recover") return reply(200, "", { found: false });
+      if (!b.challenge.trim()) return reply(403, "CHALLENGE_REQUIRED");
+      let challengeResponse: Response;
+      try {
+        challengeResponse = await fetcher(
+          "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+          {
+            method: "POST",
+            body: new URLSearchParams({
+              secret: settings.challengeSecret,
+              response: b.challenge,
+            }),
+            signal: AbortSignal.timeout(8000),
+          },
+        );
+      } catch {
+        return reply(503, "CHALLENGE_UNAVAILABLE");
+      }
+      if (!challengeResponse.ok) return reply(503, "CHALLENGE_UNAVAILABLE");
+      let challenge;
+      try {
+        challenge = await challengeResponse.json();
+      } catch {
+        return reply(503, "CHALLENGE_UNAVAILABLE");
+      }
+      if (!challenge || typeof challenge !== "object")
+        return reply(503, "CHALLENGE_UNAVAILABLE");
+      if (challenge.success !== true) {
+        const codes = Array.isArray(challenge["error-codes"])
+          ? challenge["error-codes"]
+          : [];
+        if (
+          codes.includes("invalid-input-secret") ||
+          codes.includes("missing-input-secret")
+        )
+          return reply(503, "CHALLENGE_CONFIG");
+        if (codes.includes("timeout-or-duplicate"))
+          return reply(403, "CHALLENGE_EXPIRED");
+        if (codes.includes("internal-error"))
+          return reply(503, "CHALLENGE_UNAVAILABLE");
+        return reply(403, "CHALLENGE_REJECTED");
+      }
       if (
-        challenge.success !== true ||
         challenge.hostname !== settings.challengeHostname ||
         challenge.action !== "demo-order"
       )
-        return reply(403, "CHALLENGE_REQUIRED");
+        return reply(403, "CHALLENGE_CONTEXT");
       const admission = await rpc("demo_admit_creation", {});
       if (admission.error) return reply(503, "UNAVAILABLE");
       if (admission.data !== true) return reply(429, "RATE_LIMITED");

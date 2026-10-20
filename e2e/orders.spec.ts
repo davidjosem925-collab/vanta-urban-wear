@@ -9,7 +9,7 @@ const result = {
   expires_at: "2026-10-20T01:00:00Z",
   demo: true,
 };
-async function begin(page: Page) {
+async function begin(page: Page, manualChallenge = false) {
   const state = await catalog(page);
   state.variants = state.variants.map((v, i) => ({
     ...v,
@@ -20,7 +20,7 @@ async function begin(page: Page) {
     (route) =>
       route.fulfill({
         contentType: "application/javascript",
-        body: `window.turnstile={render:(el,o)=>{if(o.size!=='compact')throw Error('Widget demasiado ancho');el.style.width='150px';el.textContent='Verificación de seguridad';o.callback('test-token');return 'fixture';},remove:()=>{}};`,
+        body: `window.turnstile={render:(el,o)=>{if(o.size!=='compact')throw Error('Widget demasiado ancho');el.style.width='150px';el.textContent='Verificación de seguridad';${manualChallenge ? `const b=document.createElement('button');b.textContent='Verificar prueba';b.onclick=()=>o.callback('token-'+crypto.randomUUID());el.append(b);` : `o.callback('test-token');`}return 'fixture';},remove:()=>{}};`,
       }),
   );
   await page.goto("/#/producto/remera-essential");
@@ -50,9 +50,9 @@ async function begin(page: Page) {
   await page.getByRole("radio", { name: /Retiro en local ficticio/ }).click();
   await page.getByRole("radio", { name: /Efectivo — Demo/ }).click();
   await page.getByRole("button", { name: "Revisar demostración" }).click();
-  await expect(
-    page.getByRole("button", { name: "Confirmar pedido demo" }),
-  ).toBeEnabled();
+  const confirm = page.getByRole("button", { name: "Confirmar pedido demo" });
+  if (manualChallenge) await expect(confirm).toBeDisabled();
+  else await expect(confirm).toBeEnabled();
   return state;
 }
 async function noOverflow(page: Page) {
@@ -252,6 +252,80 @@ test("recuperación tras recargar con carrito vacío no exige repetir formulario
     page.getByRole("heading", { name: "Pedido demo registrado." }),
   ).toBeVisible();
   expect(bodies[1].idempotency_key).toBe(bodies[0].idempotency_key);
-  expect(bodies[1].challenge).toBe("");
+  expect(bodies[1].action).toBe("recover");
+  expect(bodies[1]).not.toHaveProperty("challenge");
   await noOverflow(page);
+});
+
+test("recuperación inexistente y token consumido retoman la misma selección sin duplicar el intento", async ({
+  page,
+}) => {
+  const state = await begin(page, true);
+  const bodies: Record<string, unknown>[] = [];
+  let creates = 0;
+  await page.route("**/functions/v1/demo-orders", async (route) => {
+    const body = route.request().postDataJSON();
+    bodies.push(body);
+    if (body.action === "recover") {
+      expect(body).not.toHaveProperty("challenge");
+      return route.fulfill({ json: { found: false } });
+    }
+    if (++creates === 1) return route.abort();
+    if (creates === 2)
+      return route.fulfill({
+        status: 403,
+        json: { error: "CHALLENGE_EXPIRED" },
+      });
+    return route.fulfill({ json: result });
+  });
+  const confirm = page.getByRole("button", { name: "Confirmar pedido demo" });
+  await page.getByRole("button", { name: "Verificar prueba" }).click();
+  await expect(confirm).toBeEnabled();
+  await page.getByRole("link", { name: "Editar información" }).click();
+  await page.getByRole("button", { name: "Revisar demostración" }).click();
+  await expect(confirm).toBeDisabled();
+  await page.getByRole("button", { name: "Verificar prueba" }).click();
+  await confirm.click();
+  await expect(page.getByRole("alert")).toContainText(
+    "carrito permanece intacto",
+  );
+  await expect(confirm).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Consultar confirmación pendiente" })
+    .click();
+  await expect(
+    page.getByText(/Todavía no hay una confirmación registrada/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Consultar confirmación pendiente" }),
+  ).toHaveCount(0);
+  await page.getByRole("link", { name: "Volver a la revisión" }).click();
+  await page.getByRole("button", { name: "Verificar prueba" }).click();
+  await confirm.click();
+  await expect(page.getByRole("alert")).toContainText("HTTP 403");
+  await expect(confirm).toBeDisabled();
+  await expect(page.getByText(result.reference)).toHaveCount(0);
+  expect(
+    JSON.parse(
+      await page.evaluate(() => localStorage.getItem("vanta.cart.v1") ?? "{}"),
+    ).lines,
+  ).toHaveLength(1);
+  await page.getByRole("button", { name: "Verificar prueba" }).click();
+  await confirm.click();
+  await expect(
+    page.getByRole("heading", { name: "Pedido demo registrado." }),
+  ).toBeVisible();
+  expect(bodies).toHaveLength(4);
+  for (const body of bodies) {
+    expect(body.idempotency_key).toBe(bodies[0].idempotency_key);
+    expect(body.capability).toBe(bodies[0].capability);
+    expect(body.payload).toEqual(bodies[0].payload);
+  }
+  const tokens = bodies
+    .filter((b) => b.action === "create")
+    .map((b) => b.challenge);
+  expect(new Set(tokens).size).toBe(3);
+  await noOverflow(page);
+  expect(state.errors).toEqual([]);
+  expect(state.writes).toEqual([]);
 });

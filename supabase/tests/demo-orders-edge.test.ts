@@ -291,3 +291,93 @@ it("invalid origin/hostname configuration fails closed before RPC or challenge v
     expect(fetcher).not.toHaveBeenCalled();
   }
 });
+it("recovery miss only queries replay: no challenge validation, admission or creation", async () => {
+  const rpc = rpcMock(),
+    fetcher = challenge();
+  const { challenge: _ignored, ...rest } = body();
+  void _ignored;
+  const response = await makeHandler(
+    config,
+    rpc,
+    fetcher,
+  )(request({ ...rest, action: "recover" }));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ found: false });
+  expect(rpc.mock.calls.map((c) => c[0])).toEqual([
+    "demo_rate_limit",
+    "demo_order_replay",
+  ]);
+  expect(fetcher).not.toHaveBeenCalled();
+});
+it("missing, consumed, rejected and misconfigured challenges have safe distinct codes and never reserve", async () => {
+  const cases: [string, unknown, string, number][] = [
+    ["", null, "CHALLENGE_REQUIRED", 403],
+    [
+      "used",
+      { success: false, "error-codes": ["timeout-or-duplicate"] },
+      "CHALLENGE_EXPIRED",
+      403,
+    ],
+    [
+      "bad",
+      { success: false, "error-codes": ["invalid-input-response"] },
+      "CHALLENGE_REJECTED",
+      403,
+    ],
+    [
+      "token",
+      { success: false, "error-codes": ["invalid-input-secret"] },
+      "CHALLENGE_CONFIG",
+      503,
+    ],
+    [
+      "token",
+      { success: true, hostname: "other.example", action: "demo-order" },
+      "CHALLENGE_CONTEXT",
+      403,
+    ],
+  ];
+  for (const [token, data, error, status] of cases) {
+    const rpc = rpcMock(),
+      fetcher = vi.fn(async () => Response.json(data)) as typeof fetch;
+    const res = await makeHandler(
+      config,
+      rpc,
+      fetcher,
+    )(request({ ...body(), challenge: token }));
+    expect(res.status).toBe(status);
+    expect(await res.json()).toEqual({ error });
+    expect(
+      rpc.mock.calls.some((c) =>
+        ["demo_admit_creation", "demo_create_order"].includes(c[0]),
+      ),
+    ).toBe(false);
+    if (!token) expect(fetcher).not.toHaveBeenCalled();
+  }
+});
+it("lost response then recovery/retry return the same order without another challenge or reservation", async () => {
+  let saved: unknown = null,
+    creates = 0;
+  const rpc = vi.fn<Rpc>(async (name) => {
+    if (name === "demo_order_replay") return { data: saved, error: null };
+    if (name === "demo_create_order") {
+      creates++;
+      saved = { reference: key, status: "pending" };
+      return { data: saved, error: null };
+    }
+    return { data: true, error: null };
+  });
+  const fetcher = challenge(),
+    handler = makeHandler(config, rpc, fetcher);
+  await handler(request());
+  const { challenge: _ignored, ...rest } = body();
+  void _ignored;
+  const recovered = await handler(request({ ...rest, action: "recover" }));
+  expect(await recovered.json()).toEqual(saved);
+  const retried = await handler(
+    request({ ...body(), challenge: "already-used" }),
+  );
+  expect(await retried.json()).toEqual(saved);
+  expect(creates).toBe(1);
+  expect(fetcher).toHaveBeenCalledOnce();
+});

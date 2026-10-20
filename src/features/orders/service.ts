@@ -25,7 +25,23 @@ export type OrderService = {
   enabled: boolean;
   siteKey: string;
   confirm(a: Attempt, challenge: string): Promise<Receipt>;
+  recover(a: Attempt): Promise<Receipt | null>;
 };
+export class OrderRequestError extends Error {
+  constructor(
+    code: string,
+    public readonly kind:
+      | "http"
+      | "network"
+      | "timeout"
+      | "protocol"
+      | "configuration",
+    public readonly status?: number,
+  ) {
+    super(code);
+    this.name = "OrderRequestError";
+  }
+}
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 export function validPayload(p: unknown): p is OrderPayload {
   if (!p || typeof p !== "object") return false;
@@ -104,7 +120,7 @@ export function receipt(value: unknown): Receipt {
     !Number.isFinite(Date.parse(r.created_at)) ||
     Date.parse(r.expires_at) - Date.parse(r.created_at) !== 3600000
   )
-    throw new Error("UNAVAILABLE");
+    throw new OrderRequestError("INVALID_RESPONSE", "protocol");
   return {
     reference: r.reference,
     status: r.status,
@@ -125,7 +141,31 @@ export const orderMessages: Record<string, string> = {
     "La demo admite hasta 12 unidades, 12 variantes y 3 unidades por variante. Revisá la selección.",
   IDEMPOTENCY_CONFLICT:
     "No pudimos recuperar este intento. No se confirmó un nuevo pedido.",
-  CHALLENGE_REQUIRED: "Completá nuevamente la verificación de seguridad.",
+  CHALLENGE_REQUIRED:
+    "Completá la verificación de seguridad antes de confirmar.",
+  CHALLENGE_EXPIRED:
+    "La verificación venció o ya fue utilizada. Completá una nueva y reintentá el mismo pedido.",
+  CHALLENGE_REJECTED:
+    "Turnstile rechazó la verificación. Completá una nueva y reintentá.",
+  CHALLENGE_CONTEXT:
+    "La verificación no corresponde al sitio o a la acción esperada. Revisá el dominio y la configuración de Turnstile.",
+  CHALLENGE_CONFIG:
+    "El servidor no pudo validar la configuración de Turnstile. Revisá las claves del widget en el entorno correspondiente.",
+  CHALLENGE_UNAVAILABLE:
+    "El servidor no pudo contactar o validar la respuesta de Turnstile. Reintentá con una nueva verificación.",
+  FORBIDDEN:
+    "El servidor rechazó el origen de esta solicitud. Revisá la URL local y el origen permitido.",
+  NOT_CONFIGURED: "El servicio de pedidos no está configurado correctamente.",
+  RECOVERY_UNSUPPORTED:
+    "El servicio no admite esta consulta de recuperación. Actualizá la Edge Function antes de repetir la prueba; conservamos el mismo intento.",
+  HTTP_REJECTED:
+    "El servidor rechazó la solicitud. El carrito permanece intacto; consultá el mismo intento antes de repetir la confirmación.",
+  NETWORK_ERROR:
+    "No pudimos conectar con el servidor. El carrito permanece intacto. Consultá el resultado del mismo intento al recuperar la conexión.",
+  TIMEOUT_ERROR:
+    "La solicitud agotó el tiempo de espera. El resultado es incierto y el carrito permanece intacto. Consultá el mismo intento.",
+  INVALID_RESPONSE:
+    "El servidor devolvió una respuesta no válida. El carrito permanece intacto. Consultá el mismo intento.",
   RATE_LIMITED:
     "Alcanzaste el límite de intentos de la demo. Intentá más tarde.",
   DEMO_CAPACITY: "La demo alcanzó su límite de reservas. Intentá más tarde.",
@@ -144,6 +184,66 @@ function configuration() {
   }
 }
 const config = configuration();
+/** Only safe codes and HTTP status escape the transport; never response bodies or fetch errors. */
+export async function requestOrder(
+  url: string,
+  key: string,
+  body: Record<string, unknown>,
+  fetcher: typeof fetch = fetch,
+): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetcher(`${url}/functions/v1/demo-orders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: key },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(25000),
+    });
+  } catch (e) {
+    const timeout =
+      (e instanceof Error || e instanceof DOMException) &&
+      ["TimeoutError", "AbortError"].includes(e.name);
+    throw new OrderRequestError(
+      timeout ? "TIMEOUT_ERROR" : "NETWORK_ERROR",
+      timeout ? "timeout" : "network",
+    );
+  }
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch {
+    throw new OrderRequestError(
+      response.ok ? "INVALID_RESPONSE" : "HTTP_REJECTED",
+      response.ok ? "protocol" : "http",
+      response.status,
+    );
+  }
+  if (!response.ok) {
+    const code =
+      data &&
+      typeof data === "object" &&
+      "error" in data &&
+      typeof data.error === "string" &&
+      Object.hasOwn(orderMessages, data.error)
+        ? data.error
+        : "HTTP_REJECTED";
+    throw new OrderRequestError(
+      body.action === "recover" &&
+      response.status === 400 &&
+      code === "INVALID_REQUEST"
+        ? "RECOVERY_UNSUPPORTED"
+        : code,
+      "http",
+      response.status,
+    );
+  }
+  return data;
+}
+function configured() {
+  if (!orderService.enabled || !config)
+    throw new OrderRequestError("NOT_CONFIGURED", "configuration");
+  return config;
+}
 export const orderService: OrderService = {
   enabled:
     import.meta.env.VITE_DEMO_ORDERS_ENABLED === "true" &&
@@ -151,24 +251,33 @@ export const orderService: OrderService = {
     Boolean(import.meta.env.VITE_TURNSTILE_SITE_KEY),
   siteKey: import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "",
   async confirm(a, challenge) {
-    if (!this.enabled || !config) throw new Error("UNAVAILABLE");
-    const response = await fetch(`${config.url}/functions/v1/demo-orders`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: config.key },
-      body: JSON.stringify({
+    const c = configured();
+    return receipt(
+      await requestOrder(c.url, c.key, {
         action: "create",
         idempotency_key: a.key,
         capability: a.capability,
         payload: a.payload,
         challenge,
       }),
-      signal: AbortSignal.timeout(25000),
+    );
+  },
+  async recover(a) {
+    const c = configured();
+    const data = await requestOrder(c.url, c.key, {
+      action: "recover",
+      idempotency_key: a.key,
+      capability: a.capability,
+      payload: a.payload,
     });
-    const data = await response.json();
-    if (!response.ok)
-      throw new Error(
-        Object.hasOwn(orderMessages, data.error) ? data.error : "UNAVAILABLE",
-      );
+    if (
+      data &&
+      typeof data === "object" &&
+      "found" in data &&
+      data.found === false &&
+      Object.keys(data).length === 1
+    )
+      return null;
     return receipt(data);
   },
 };

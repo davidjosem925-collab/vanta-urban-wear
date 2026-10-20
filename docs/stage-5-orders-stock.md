@@ -332,10 +332,10 @@ prueba última unidad, reintentos concurrentes, cancelación vs expiración y pe
 Playwright conserva regresiones anteriores y añade el modo configurado a 320,
 375,393,820,1440px, con capturas y control de desbordes.
 
-Pendiente de infraestructura, expresamente **no ejecutado**: despliegue Supabase,
-Auth/PostgREST/gateway reales con tokens, widget y secreto Turnstile reales,
-scheduler pg_cron y expiración de 60 minutos en staging. Estas verificaciones son
-requisito antes de habilitar la bandera en el sitio público. Etapa 6: panel admin,
+Estado actualizado según el operador: migración aplicada, Edge desplegada, cuatro
+secretos configurados y pg_cron funcionando. Esta revisión no ejecutó esos cambios
+ni verificó su estado remoto. Falta terminar el checkout real con la corrección
+de recuperación y verificar expiración de 60 minutos antes de habilitar el sitio público. Etapa 6: panel admin,
 gestión de estados y ajustes mediante los RPC preparados; política y autorización de devoluciones; no se implementa aquí.
 
 
@@ -351,3 +351,9 @@ La guía de revisión incluye las capturas de recibo en los cinco anchos.
 La [auditoría técnica final y guía verificable de despliegue](stage-5-final-audit.md)
 incorpora las comprobaciones reales aportadas por el operador y las correcciones
 de concurrencia y privilegios realizadas antes de aprobar la migración.
+
+## Ajuste posterior: recuperación y verificación
+
+El flujo corregido, diagnóstico seguro y actualización manual de la Edge ya
+desplegada se documentan en [Recuperación y Turnstile](stage-5-recovery-fix.md).
+Este ajuste no requiere reaplicar migraciones.
