@@ -11,7 +11,10 @@ describe("Rutas, precios y variantes", () => {
   });
   it("formatea centavos en ARS sin perder decimales", () => {
     expect(formatARS(2500050)).toContain("25.000,50");
-    expect(formatARS(0)).toContain("0,00");
+    expect(formatARS(0)).not.toContain(",");
+    expect(formatARS(2700000)).toContain("27.000");
+    expect(formatARS(2700000)).not.toContain(",00");
+    expect(formatARS(2700010)).toContain("27.000,10");
   });
   it("rechaza combinaciones inexistentes o inactivas", () => {
     expect(selectedVariant(product.variants, "Negro", "M")?.sku).toBe(

@@ -13,3 +13,26 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+  images-portability:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - run: git config --global core.autocrlf true
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+          cache: npm
+      - run: npm ci
+      # Must pass BEFORE preparation, straight from a clean checkout.
+      - run: npm run images:check
+      - run: npx vitest run supabase/tests/generated-image-file.test.ts
+      - run: npm run images:prepare
+      - run: npm run images:check
+      - name: Preparation must leave tracked files untouched
+        run: git diff --exit-code

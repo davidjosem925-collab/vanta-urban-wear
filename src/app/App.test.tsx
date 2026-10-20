@@ -65,7 +65,7 @@ describe("Tienda VANTA", () => {
     expect(screen.getByText(/No acepta compras/)).toBeVisible();
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /comprar|carrito|registr/i }),
+      screen.queryByRole("button", { name: /comprar|registr/i }),
     ).not.toBeInTheDocument();
   });
   it("abre y cierra navegación móvil con Escape", () => {
@@ -132,7 +132,7 @@ describe("Tienda VANTA", () => {
     render(<App service={fixtureService({ product: async () => demo })} />);
     await screen.findByRole("heading", { name: product.name });
     const sizes = screen.getByRole("group", { name: /Talle/ });
-    expect(within(sizes).getAllByRole("button").map((button) => button.textContent)).toEqual(["S", "M", "L", "XL"]);
+    expect(within(sizes).getAllByRole("button", { pressed: false }).map((button) => button.textContent)).toEqual(["S", "M", "L", "XL"]);
     fireEvent.click(screen.getByRole("button", { name: "Blanco Hueso" }));
     fireEvent.click(within(sizes).getByRole("button", { name: "XL" }));
     expect(screen.getByRole("status")).toHaveTextContent("Blanco Hueso / XL: variante publicada. Stock por confirmar.");

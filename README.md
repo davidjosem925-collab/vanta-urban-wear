@@ -35,6 +35,7 @@ de secretos. No versionar `.env.local`.
 | `npm run lint` | ESLint, sin warnings |
 | `npm test` | Pruebas de UI, configuración y SQL/RLS embebido |
 | `npm run test:watch` | Pruebas en modo desarrollo |
+| `npm run test:e2e` | Carrito en Chromium: escritorio y dos tamaños móviles, sin tráfico remoto |
 | `npm run check` | Lint + pruebas + build |
 | `npm run verify:supabase` | Verificar lectura real con variables privadas configuradas |
 
@@ -109,4 +110,26 @@ La carga remota está pendiente de aprobación; procedimiento y controles en
 
 El alcance descrito en la sección de etapa 1 queda como registro de esa entrega;
 el estado actual y su validación se detallan en [docs/stage-2-review.md](docs/stage-2-review.md).
-Carrito, checkout, pagos reales y panel siguen fuera de alcance.
+Checkout, pagos reales y panel siguen fuera de alcance.
+
+## VANTA — Etapa 3
+
+Carrito funcional con selección obligatoria de talle/color, cantidades, agrupación
+por variante, panel lateral accesible, subtotales y total en centavos ARS. La
+selección persiste en `localStorage`; precios, variantes publicadas e imágenes
+firmadas se vuelven a consultar al catálogo público. Stock por confirmar.
+Al agregar se muestra una notificación compacta durante aproximadamente 4 segundos,
+sin abrir el panel ni mover el foco. Incluye «Ver carrito». En celulares aparece
+una barra con unidades y total, oculta mientras hay notificación o un modal.
+Las URLs firmadas se reutilizan en memoria; los WebP privados opcionales y su
+carga manual están documentados en [optimización de imágenes](docs/catalog-image-optimization.md).
+Las fichas incluyen guía orientativa de talles por categoría, con instrucciones
+de medición y cierre accesible. Los precios omiten `,00` cuando no hay centavos
+significativos y conservan las fracciones reales.
+
+No crea pedidos, reservas ni pagos y no requiere migraciones ni cargas remotas.
+La continuación de compra permanece deshabilitada. Límites: 10 unidades por
+variante y 30 variantes por carrito, sin representar disponibilidad real.
+
+Arquitectura, prueba local, validación y pendientes en
+[docs/stage-3-cart.md](docs/stage-3-cart.md).

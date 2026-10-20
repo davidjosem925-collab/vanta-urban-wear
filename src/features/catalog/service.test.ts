@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "../../lib/supabase/database.types";
 import { categories, product } from "../../test/fixtures";
 import { createCatalogService, PAGE_SIZE } from "./service";
@@ -10,7 +10,7 @@ function setup(
 ) {
   const fetcher = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
-      const value = responder(new URL(String(input)), init);
+      const value = await responder(new URL(String(input)), init);
       if (value instanceof Response) return value;
       return new Response(JSON.stringify(value), {
         status: 200,
@@ -121,5 +121,88 @@ describe("Servicios públicos Supabase", () => {
     await expect(service.products(undefined, 0)).rejects.toThrow(
       "precio inválido",
     );
+  });
+});
+
+// URL cache is per anonymous service, never a price or stock cache.
+afterEach(() => vi.restoreAllMocks());
+describe("Caché de imágenes firmadas", () => {
+  it("deduplica firmas simultáneas, respeta TTL y permite renovación forzada", async () => {
+    let now = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    let signatures = 0;
+    const { service, fetcher } = setup(() => [
+      {
+        path: "front.png",
+        signedURL: `/object/sign/product-images/front.png?token=${++signatures}`,
+      },
+    ]);
+    const [first, parallel] = await Promise.all([
+      service.imageUrl("front.png"),
+      service.imageUrl("front.png"),
+    ]);
+    expect(first).toBe(parallel);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(await service.imageUrl("front.png")).toBe(first);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    now += 840_000;
+    expect(await service.imageUrl("front.png")).not.toBe(first);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await service.imageUrl("front.png", true);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+  it("no conserva fallos de firma y no comparte tokens entre clientes", async () => {
+    let fail = true;
+    const { service, fetcher } = setup(() =>
+      fail
+        ? new Response("{}", { status: 403 })
+        : [
+            {
+              path: "front.png",
+              signedURL: "/object/sign/product-images/front.png?token=ok",
+            },
+          ],
+    );
+    expect(await service.imageUrl("front.png")).toBeNull();
+    fail = false;
+    expect(await service.imageUrl("front.png")).toContain("token=ok");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const another = setup(() => [
+      {
+        path: "front.png",
+        signedURL: "/object/sign/product-images/front.png?token=separate",
+      },
+    ]);
+    expect(await another.service.imageUrl("front.png")).toContain(
+      "token=separate",
+    );
+    expect(another.fetcher).toHaveBeenCalledOnce();
+  });
+  it("asocia WebP por perfil sin duplicar fotografías de galería", async () => {
+    const original = product.images[0];
+    const derivatives = ["thumb", "card", "detail"].map((profile, i) => ({
+      ...original,
+      id: `optimized-${i}`,
+      position: 10000 + i,
+      storage_path: original.storage_path + `.vanta-${profile}-v1.webp`,
+    }));
+    const rows = [...product.images, ...derivatives];
+    const { service } = setup((url) => {
+      if (url.pathname.endsWith("/products")) return [product];
+      if (url.pathname.endsWith("/product_images")) return rows;
+      if (url.pathname.endsWith("/product_variants")) return product.variants;
+      if (url.pathname.includes("/object/sign/"))
+        return rows.map((row) => ({
+          path: row.storage_path,
+          signedURL: `/object/sign/product-images/${row.storage_path}?token=private`,
+        }));
+      return [];
+    });
+    const page = await service.products(undefined, 0);
+    expect(page.products[0].images).toHaveLength(2);
+    expect(page.products[0].images[0].optimized?.thumb?.url).toContain(
+      ".vanta-thumb-v1.webp",
+    );
+    expect(page.products[0].images[0].url).toContain(original.storage_path);
   });
 });

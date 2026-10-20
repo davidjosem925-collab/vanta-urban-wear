@@ -4,6 +4,8 @@ import { Photo } from "../../components/Photo";
 import { formatARS, orderedSizes, selectedVariant } from "./model";
 import type { CatalogProduct, CatalogService } from "./service";
 import { useAsync } from "./useAsync";
+import { SizeGuide } from "./SizeGuide";
+import { AddToCart } from "../cart/AddToCart";
 
 function ProductDetail({
   product,
@@ -52,7 +54,7 @@ function ProductDetail({
                   aria-pressed={index === activeImage}
                   onClick={() => setActiveImage(index)}
                 >
-                  <Photo key={image.id} image={image} service={service} />
+                  <Photo key={image.id} image={image} service={service} profile="thumb" />
                 </button>
               ))}
             </div>
@@ -73,47 +75,55 @@ function ProductDetail({
               "Una pieza del universo VANTA. Más información próximamente."}
           </p>
           {product.variants.length > 0 && (
-            <>
-              <fieldset className="variant-options">
-                <legend>
-                  Color <span>{color || "Seleccioná una opción"}</span>
-                </legend>
-                <div>
-                  {colors.map((value) => (
-                    <button
-                      key={value}
-                      className="option"
-                      aria-pressed={color === value}
-                      onClick={() => selectColor(value)}
-                    >
-                      {value}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-              <fieldset className="variant-options">
-                <legend>
-                  Talle <span>{size || "Seleccioná una opción"}</span>
-                </legend>
-                <div>
-                  {sizes.map((value) => (
-                    <button
-                      key={value}
-                      className="option size-option"
-                      aria-pressed={size === value}
-                      disabled={
-                        Boolean(color) &&
-                        !selectedVariant(product.variants, color, value)
-                      }
-                      onClick={() => setSize(value)}
-                    >
-                      {value}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-            </>
+            <fieldset className="variant-options">
+              <legend>
+                Color <span>{color || "Seleccioná una opción"}</span>
+              </legend>
+              <div>
+                {colors.map((value) => (
+                  <button
+                    key={value}
+                    className="option"
+                    aria-pressed={color === value}
+                    onClick={() => selectColor(value)}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
           )}
+          <fieldset className="variant-options">
+            <legend className="size-legend">
+              <span className="size-heading">
+                <span className="size-label">
+                  Talle <span>{size || "Seleccioná una opción"}</span>
+                </span>
+                <SizeGuide categoryId={product.category_id} service={service} />
+              </span>
+            </legend>
+            <div>
+              {sizes.map((value) => (
+                <button
+                  key={value}
+                  className="option size-option"
+                  aria-pressed={size === value}
+                  disabled={
+                    Boolean(color) &&
+                    !selectedVariant(product.variants, color, value)
+                  }
+                  onClick={() => setSize(value)}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+            {!sizes.length && (
+              <p className="muted small">
+                Sin talles publicados por el momento.
+              </p>
+            )}
+          </fieldset>
           <div className="availability" role="status">
             <span className="status-dot" aria-hidden="true" />
             <p>
@@ -128,6 +138,7 @@ function ProductDetail({
             La publicación de una variante no confirma unidades disponibles.
             Esta tienda ficticia todavía no acepta compras.
           </p>
+          <AddToCart product={product} color={color} size={size} />
           <div className="detail-facts">
             <p>
               <span>01</span> Siluetas para todos los días.

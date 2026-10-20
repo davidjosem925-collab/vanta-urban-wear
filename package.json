@@ -13,11 +13,14 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "check": "npm run lint && npm run test && npm run build",
     "verify:supabase": "node --experimental-strip-types scripts/verify-supabase.mjs",
     "demo:prepare": "node scripts/prepare-demo-catalog.mjs",
     "demo:check": "node scripts/prepare-demo-catalog.mjs --check",
-    "demo:upload": "node scripts/upload-demo-images.mjs"
+    "demo:upload": "node scripts/upload-demo-images.mjs",
+    "images:prepare": "node --experimental-strip-types scripts/prepare-catalog-images.mjs",
+    "images:check": "node --experimental-strip-types scripts/prepare-catalog-images.mjs --check"
   },
   "dependencies": {
     "react": "^19.1.0",
@@ -43,6 +46,8 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/jest-dom": "^6.8.0",
     "@electric-sql/pglite": "^0.3.14",
-    "@types/node": "^24.0.0"
+    "@types/node": "^24.0.0",
+    "@playwright/test": "^1.64.1",
+    "sharp": "^0.35.5"
   }
 }
