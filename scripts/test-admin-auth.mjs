@@ -118,7 +118,17 @@ try {
   );
   await until(() => {
     try {
-      docker("exec", names.pg, "pg_isready", "-U", "postgres");
+      // The image starts a temporary socket-only server during initdb, then restarts.
+      // TCP readiness proves the final server is accepting connections.
+      docker(
+        "exec",
+        names.pg,
+        "pg_isready",
+        "-h",
+        "127.0.0.1",
+        "-U",
+        "postgres",
+      );
       return true;
     } catch {
       return false;
