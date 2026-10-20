@@ -6,9 +6,8 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { Photo } from "../../components/Photo";
+import { CheckoutSummary } from "./CheckoutSummary";
 import { useCart } from "../cart/context";
-import { formatARS, productHref } from "../catalog/model";
 import {
   changeDelivery,
   paymentNames,
@@ -493,97 +492,7 @@ export function CheckoutPage({
                 </div>
               ) : null}
             </div>
-            <aside
-              className="checkout-summary"
-              aria-label="Resumen de la selección"
-            >
-              <details open>
-                <summary>
-                  Tu selección{" "}
-                  <span>
-                    {cart.units} {cart.units === 1 ? "unidad" : "unidades"}
-                  </span>
-                </summary>
-                <ul>
-                  {cart.entries.map((entry) => (
-                    <li key={entry.line.variantId}>
-                      <div className="checkout-photo">
-                        <Photo
-                          image={entry.product?.images[0]}
-                          profile="thumb"
-                          service={cart.service}
-                          allowRetry
-                        />
-                      </div>
-                      <div>
-                        <h3>
-                          {entry.product ? (
-                            <a href={productHref(entry.product.slug)}>
-                              {entry.product.name}
-                            </a>
-                          ) : (
-                            "Prenda por verificar"
-                          )}
-                        </h3>
-                        <p>
-                          {entry.variant
-                            ? `Talle ${entry.variant.size} / ${entry.variant.color}`
-                            : "Variante por verificar"}
-                        </p>
-                        <p>Cantidad: {entry.line.quantity}</p>
-                        <p>
-                          {entry.status === "ready" && entry.product
-                            ? `${formatARS(entry.product.price_cents)} ARS / unidad`
-                            : "Precio por confirmar"}
-                        </p>
-                        <p className="checkout-line-subtotal">
-                          Subtotal:{" "}
-                          {entry.status === "ready" && entry.product
-                            ? `${formatARS(entry.product.price_cents * entry.line.quantity)} ARS`
-                            : "Por confirmar"}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-                <button className="cart-text-button" onClick={cart.openCart}>
-                  Modificar carrito
-                </button>
-              </details>
-              <div className="checkout-total">
-                <span>
-                  Subtotal <small>ARS</small>
-                </span>
-                <strong>
-                  {cart.total === null
-                    ? "Por confirmar"
-                    : formatARS(cart.total)}
-                </strong>
-              </div>
-              <dl className="checkout-summary-meta">
-                <div>
-                  <dt>Entrega</dt>
-                  <dd>
-                    {draft.delivery === "pickup"
-                      ? "Retiro ficticio · Sin costo"
-                      : "Envío a coordinar"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Pago simulado</dt>
-                  <dd>{paymentNames[draft.payment]}</dd>
-                </div>
-              </dl>
-              <p className="checkout-help">
-                {draft.delivery === "shipping"
-                  ? shippingNotice
-                  : "Retiro en local ficticio sin costo."}
-              </p>
-              <p className="checkout-help">
-                Stock por confirmar. No se reserva inventario. El subtotal es
-                orientativo, no una cotización definitiva.
-              </p>
-            </aside>
+            <CheckoutSummary draft={draft} />
           </div>
           <div className="checkout-actions">
             {step === "details" ? (

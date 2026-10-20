@@ -391,3 +391,35 @@
     scroll-behavior: auto;
   }
 }
+
+/* Compact disclosure only on phones; tablet/desktop keep the existing sidebar. */
+@media (max-width: 767px) {
+  .checkout-summary-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .checkout-summary-heading h2 {
+    font-size: 18px;
+    font-weight: 400;
+    margin: 0;
+  }
+  .checkout-summary-heading > span {
+    color: #b7b4ae;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .checkout-summary .checkout-total {
+    margin-top: 16px;
+    padding-block: 16px;
+    border-bottom: 0;
+  }
+  .checkout-summary summary {
+    padding-block: 12px;
+    min-height: 44px;
+    font-size: 12px;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+}

@@ -73,8 +73,73 @@ beforeEach(() => vi.spyOn(window, "scrollTo").mockImplementation(() => {}));
 afterEach(() => {
   window.history.replaceState(null, "", "/");
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 describe("Checkout integrado con el carrito existente", () => {
+  it("contrae inicialmente en móvil y mantiene cantidades, subtotal, entrega y formulario al alternar", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    await start();
+    contact();
+    pickup();
+    const summary = screen.getByRole("complementary", {
+      name: "Resumen de la selección",
+    });
+    const toggle = within(summary).getByText("Ver productos");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      within(summary).getByRole("heading", { name: "Tu selección" }),
+    ).toBeVisible();
+    expect(within(summary).getByText("2 unidades")).toBeVisible();
+    expect(
+      await within(summary).findByText("$ 50.001", { exact: true }),
+    ).toBeVisible();
+    expect(within(summary).getByText("Cantidad: 2")).not.toBeVisible();
+    expect(
+      within(summary).getByText("Retiro ficticio · Sin costo"),
+    ).toBeVisible();
+    expect(within(summary).getByText("Efectivo — Demo")).toBeVisible();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toHaveTextContent("Ocultar productos"));
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(within(summary).getByText("Cantidad: 2")).toBeVisible();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toHaveTextContent("Ver productos"));
+    expect(within(summary).getByText("Cantidad: 2")).not.toBeVisible();
+    expect(
+      await within(summary).findByText("$ 50.001", { exact: true }),
+    ).toBeVisible();
+    expect(screen.getByLabelText("Nombre")).toHaveValue("Lucía");
+    expect(
+      screen.getByRole("radio", { name: /Efectivo — Demo/ }),
+    ).toBeChecked();
+    fireEvent.click(
+      within(summary).getByRole("button", { name: "Modificar carrito" }),
+    );
+    expect(
+      await screen.findByRole("dialog", { name: "Tu carrito" }),
+    ).toBeVisible();
+  });
+  it("mantiene el resumen abierto y el contenido lateral actual en escritorio", async () => {
+    await start();
+    const summary = screen.getByRole("complementary", {
+      name: "Resumen de la selección",
+    });
+    expect(summary.querySelector("details")).toHaveAttribute("open");
+    expect(within(summary).getByText("Cantidad: 2")).toBeVisible();
+    expect(
+      within(summary).queryByText("Ver productos"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(summary).getByRole("button", { name: "Modificar carrito" }),
+    ).toBeVisible();
+  });
   it.each(["#/checkout", "#/checkout/revision", "#/checkout/finalizado"])(
     "bloquea acceso vacío en %s",
     async (hash) => {

@@ -141,11 +141,15 @@ test("checkout de retiro: validación accesible, edición, carrito compartido y 
   await dialog.getByRole("button", { name: /^Aumentar/ }).click();
   await expect(dialog.getByText("3 unidades", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Cerrar carrito" }).click();
+  if (page.viewportSize()!.width <= 767)
+    await page.getByText("Ver productos", { exact: true }).click();
   await expect(
     page.getByRole("complementary").getByText("Cantidad: 3"),
   ).toBeVisible();
   await page.getByRole("button", { name: "Revisar demostración" }).click();
   await expect(page.locator(".checkout-total strong")).toHaveText(/75\.001,50/);
+  if (page.viewportSize()!.width <= 767)
+    await page.getByText("Ver productos", { exact: true }).click();
   await expect(
     page.getByRole("complementary").getByRole("img"),
   ).toHaveAttribute("src", /vanta-thumb-v1\.webp/);
@@ -243,6 +247,145 @@ test("checkout de envío: dirección, efectivo incompatible y revalidación de p
     page.getByRole("heading", { name: "Recorrido de compra completado." }),
   ).toBeVisible();
   await onlyCartStored(page);
+  await noOverflow(page);
+  expect(state.errors).toEqual([]);
+  expect(state.consoleErrors).toEqual([]);
+  expect(state.writes).toEqual([]);
+  expect(state.unexpected).toEqual([]);
+});
+
+test("resumen responsive con ocho prendas: contraer, teclado y datos compartidos", async ({
+  page,
+}, testInfo) => {
+  const state = await catalog(page);
+  // Eight fixture-only variants exercise a long selection without remote catalog changes.
+  const variants = ["Negro", "Grafito"].flatMap((color, c) =>
+    ["S", "M", "L", "XL"].map((size, s) => ({
+      ...state.variants[0],
+      id: `demo-variant-${c}-${s}`,
+      sku: `DEMO-${c}-${s}`,
+      color,
+      size,
+    })),
+  );
+  state.variants = variants;
+  await page.addInitScript(
+    (rows) =>
+      localStorage.setItem(
+        "vanta.cart.v1",
+        JSON.stringify({
+          version: 1,
+          lines: rows.map((variant) => ({
+            slug: "remera-essential",
+            productId: variant.product_id,
+            variantId: variant.id,
+            quantity: 2,
+          })),
+        }),
+      ),
+    variants,
+  );
+  await page.goto("/#/checkout");
+  await expect(
+    page.getByRole("button", { name: "Revisar demostración" }),
+  ).toBeEnabled();
+  await contact(page);
+  await page.getByRole("radio", { name: /Retiro en local ficticio/ }).check();
+  await page.getByRole("radio", { name: /Efectivo — Demo/ }).check();
+  const summary = page.getByRole("complementary", {
+    name: "Resumen de la selección",
+  });
+  const mobile = page.viewportSize()!.width <= 767;
+  const control = summary.locator("summary");
+  await expect(summary.getByText("16 unidades", { exact: true })).toBeVisible();
+  await expect(summary.locator(".checkout-total strong")).toHaveText(
+    /400\.008/,
+  );
+  await expect(summary.getByText("Retiro ficticio · Sin costo")).toBeVisible();
+  await expect(
+    summary.getByText("Efectivo — Demo", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    summary.getByRole("button", { name: "Modificar carrito" }),
+  ).toBeVisible();
+  if (mobile) {
+    await expect(control).toHaveText("Ver productos");
+    await expect(control).toHaveAccessibleName("Ver productos");
+    await expect(control).toHaveAttribute("aria-expanded", "false");
+    await expect(summary.getByRole("listitem")).toHaveCount(0);
+    await expect(control).toHaveAttribute("aria-controls", /.+/);
+    expect((await summary.boundingBox())!.height).toBeLessThan(650);
+    await capture(page, testInfo.outputPath("summary-collapsed.png"));
+    await control.focus();
+    await page.keyboard.press("Enter");
+    await expect(control).toHaveText("Ocultar productos");
+    await expect(control).toHaveAccessibleName("Ocultar productos");
+    await expect(control).toHaveAttribute("aria-expanded", "true");
+    await expect(control).toBeFocused();
+  } else {
+    await expect(control).toHaveAttribute("aria-expanded", "true");
+    await expect(control).toContainText("Tu selección");
+  }
+  await expect(summary.getByRole("listitem")).toHaveCount(8);
+  await expect(summary.getByRole("img")).toHaveCount(8);
+  await expect(
+    summary.getByText("Talle S / Negro", { exact: true }),
+  ).toBeVisible();
+  if (mobile) {
+    // The full page scrolls; neither the list nor its summary becomes a nested scroller.
+    expect(
+      await summary.evaluate((el) =>
+        [el, el.querySelector("ul")!].every(
+          (node) =>
+            !["auto", "scroll"].includes(getComputedStyle(node).overflowY),
+        ),
+      ),
+    ).toBe(true);
+    await capture(page, testInfo.outputPath("summary-expanded.png"));
+    await control.focus();
+    await page.keyboard.press("Space");
+    await expect(control).toHaveText("Ver productos");
+    await expect(control).toHaveAttribute("aria-expanded", "false");
+    await expect(control).toBeFocused();
+    await expect(summary.getByRole("listitem")).toHaveCount(0);
+    await expect(summary.locator(".checkout-total strong")).toHaveText(
+      /400\.008/,
+    );
+  }
+  await expect(page.getByLabel("Nombre", { exact: true })).toHaveValue("Lucía");
+  await expect(
+    page.getByRole("radio", { name: /Efectivo — Demo/ }),
+  ).toBeChecked();
+  await summary.getByRole("button", { name: "Modificar carrito" }).click();
+  const dialog = page.getByRole("dialog", { name: "Tu carrito", exact: true });
+  await expect(dialog.getByRole("listitem")).toHaveCount(8);
+  await dialog.getByRole("button", { name: "Cerrar carrito" }).click();
+  await expect(
+    summary.getByRole("button", { name: "Modificar carrito" }),
+  ).toBeFocused();
+  if (page.viewportSize()!.width === 393) {
+    const viewport = page.viewportSize()!;
+    await page.setViewportSize({ width: 820, height: 1180 });
+    await expect(control).toHaveAttribute("aria-expanded", "true");
+    await expect(control).toContainText("Tu selección");
+    await page.setViewportSize(viewport);
+    await expect(control).toHaveText("Ver productos");
+    await expect(control).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByLabel("Nombre", { exact: true })).toHaveValue(
+      "Lucía",
+    );
+  }
+  await page.getByRole("button", { name: "Revisar demostración" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Todo en su lugar." }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Finalizar demostración" }),
+  ).toBeEnabled();
+  if (mobile)
+    await expect(
+      page.getByText("Ver productos", { exact: true }),
+    ).toBeVisible();
   await noOverflow(page);
   expect(state.errors).toEqual([]);
   expect(state.consoleErrors).toEqual([]);

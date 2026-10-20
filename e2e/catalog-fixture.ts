@@ -11,6 +11,7 @@ export async function catalog(page: Page) {
     categoryId: product.category_id,
     offline: false,
     published: true,
+    variants: product.variants,
     errors: [] as string[],
     consoleErrors: [] as string[],
     writes: [] as string[],
@@ -74,7 +75,7 @@ export async function catalog(page: Page) {
           ],
         });
       if (path.endsWith("/product_variants"))
-        return route.fulfill({ json: state.published ? product.variants : [] });
+        return route.fulfill({ json: state.published ? state.variants : [] });
       if (path.endsWith("/product_images"))
         return route.fulfill({
           json: rows.map(({ id, product_id, storage_path, alt, position }) => ({

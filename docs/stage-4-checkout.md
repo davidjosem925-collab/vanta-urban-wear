@@ -80,10 +80,31 @@ envío incluido. Se mantiene **Stock por confirmar** y no se afirma disponibilid
 Negro/carbón, blanco hueso, grises y los botones/tipografía existentes. Indicador
 semántico de pasos, breadcrumbs y foco de navegación compartido. Escritorio con
 formulario a la izquierda y resumen a la derecha, sticky y con scroll propio si
-fuera largo; hasta 1000 px pasa a una columna. Resumen desplegable con `details`
-nativo y abierto inicialmente. Controles de al menos 48 px y campos de una columna
+fuera largo; hasta 1000 px pasa a una columna. A partir de 768 px se conserva el
+resumen lateral/desplegable abierto inicialmente, con las dimensiones existentes.
+Controles de al menos 48 px y campos de una columna
 en celulares pequeños, con entradas de 16 px para evitar zoom automático de iOS.
 Acciones finales después de toda la revisión/selección.
+
+### Resumen compacto en celulares (hasta 767 px)
+
+`CheckoutSummary.tsx` separa únicamente la presentación del resumen. Se inicia
+contraído, con «Tu selección», unidades y subtotal ARS visibles en el encabezado.
+El control nativo `summary` permite **Ver productos / Ocultar productos**, con
+Enter o Espacio, `aria-expanded` y `aria-controls`; el foco permanece en el control.
+
+«Modificar carrito», entrega, método de pago y aclaraciones quedan fuera del
+contenido plegable. El subtotal solo se renderiza una vez y se toma de `cart.total`;
+las unidades y prendas también siguen viniendo del mismo proveedor. No se duplica
+carrito, formulario ni cálculo monetario. Abrir/cerrar o cambiar de ancho no borra
+la información. Al cambiar entre móvil y escritorio se restablece el estado inicial
+propio de esa presentación, manteniendo la selección y el formulario.
+
+La lista expandida usa el scroll normal de la página en móvil, sin scroll interno,
+modal, barra fija ni animaciones adicionales. En 820 y 1440 px se mantienen estructura,
+orden, estilos y apertura inicial previos. Las pruebas incluyen ocho líneas de prendas,
+16 unidades y los cinco anchos, colapso/expansión por teclado, edición del carrito,
+conservación de datos, ausencia de desbordes y cambio entre 393 y 820 px.
 
 La barra flotante del carrito no se renderiza en **ninguna ruta de checkout**; el
 ícono del encabezado y los botones del checkout siguen abriendo el panel existente.
@@ -157,9 +178,9 @@ Resultados de la entrega (reproducidos también por CI):
 | Comprobación | Resultado |
 | --- | --- |
 | ESLint | Sin errores ni warnings |
-| Vitest | 228 pruebas, incluidos 31 casos nuevos de checkout |
+| Vitest | 230 pruebas, incluidos 33 casos de checkout |
 | TypeScript / build | Correctos; checkout separado en chunk de carga diferida |
-| Playwright | 45 recorridos en 1440, 820, 393, 375 y 320 px |
+| Playwright | 50 recorridos en 1440, 820, 393, 375 y 320 px |
 | `npm audit` | 0 vulnerabilidades |
 | Tráfico en los recorridos válidos | Sin escrituras de base de datos ni destinos remotos inesperados |
 
