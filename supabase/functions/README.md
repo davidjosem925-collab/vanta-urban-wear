@@ -1,15 +1,13 @@
-# Backend futuro (sin endpoints desplegados)
+# Backend de demostración — etapa 5
 
-Reservado para Edge Functions de Supabase. `_shared/` contendrá validaciones,
-clientes privilegiados, verificación de firmas y respuestas comunes. No importar
-este directorio desde `src/` ni agregar claves privadas a variables `VITE_*`.
+`demo-orders/` contiene un endpoint de invitado con challenge obligatorio,
+validación acotada, límites SQL persistentes y capacidad de recuperación/cancelación.
+No hay endpoint público para leer pedidos. Las RPC de creación/reserva se ejecutan
+en una transacción y no son accesibles con la clave pública del navegador.
 
-Endpoints previstos: creación de pedido/reserva como invitado, creación de
-preferencia Mercado Pago, webhook, vencimiento de reservas y operaciones de
-administración. No se implementan en etapa 1. No crear funciones SECURITY DEFINER
-expuestas a anon para operar stock/pagos sin su validación server-side.
+Nunca importar estas carpetas desde `src/` ni usar secretos en variables `VITE_*`.
+El servidor utiliza los bindings Supabase de Edge; no crear claves aquí.
 
-El backend validará datos, límites/rate limiting y autorización administrativa,
-recalculará precios y descuentos en PostgreSQL y usará transacciones SQL mediante
-RPC privadas ejecutables solo por service_role. Auth JWT por sí solo no acredita
-ser administrador. Ver `docs/security-and-stock.md`.
+Despliegue, permisos, Turnstile, job pg_cron, retención, pruebas y aprobaciones:
+[docs/stage-5-orders-stock.md](../../docs/stage-5-orders-stock.md).
+No se desplegó esta función ni se ejecutaron operaciones remotas durante el desarrollo.

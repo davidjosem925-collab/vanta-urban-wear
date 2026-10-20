@@ -16,6 +16,7 @@ jobs:
       - run: npm run check
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - run: npm run test:e2e:orders
   images-portability:
     strategy:
       fail-fast: false
@@ -37,3 +38,23 @@ jobs:
       - run: npm run images:check
       - name: Preparation must leave tracked files untouched
         run: git diff --exit-code
+  orders-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: local-test-only
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm run test:orders:postgres
+        env:
+          VANTA_TEST_PG_CONTAINER: ${{ job.services.postgres.id }}

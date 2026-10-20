@@ -1,6 +1,7 @@
 import {
   useEffect,
   useRef,
+  useCallback,
   useState,
   type FormEvent,
   type Dispatch,
@@ -19,6 +20,11 @@ import {
   type Field,
 } from "./model";
 
+import { OrderChallenge } from "../orders/OrderChallenge";
+import { formatARS } from "../catalog/model";
+import type { OrderService, Receipt, OrderPayload } from "../orders/service";
+import type { useDemoOrder } from "../orders/useDemoOrder";
+
 export type CheckoutStep = "details" | "review" | "complete";
 type Props = {
   step: CheckoutStep;
@@ -26,6 +32,9 @@ type Props = {
   setDraft: Dispatch<SetStateAction<CheckoutDraft>>;
   completed: boolean;
   onComplete(): void;
+  orders: OrderService;
+  orderFlow: ReturnType<typeof useDemoOrder>;
+  orderReceipt: Receipt | null;
 };
 export function CheckoutPage({
   step,
@@ -33,8 +42,25 @@ export function CheckoutPage({
   setDraft,
   completed,
   onComplete,
+  orders,
+  orderFlow,
+  orderReceipt,
 }: Props) {
   const cart = useCart();
+  const [challenge, setChallenge] = useState("");
+  const [challengeRevision, setChallengeRevision] = useState(0);
+  const acceptToken = useCallback((token: string) => setChallenge(token), []);
+  const payload = (): OrderPayload => ({
+    items: cart.entries
+      .map((e) => ({
+        variant_id: e.line.variantId,
+        quantity: e.line.quantity,
+        expected_price_cents: e.product!.price_cents,
+      }))
+      .sort((a, b) => a.variant_id.localeCompare(b.variant_id)),
+    delivery: draft.delivery,
+    payment: draft.payment as OrderPayload["payment"],
+  });
   const [errors, setErrors] = useState<Errors>({});
   const [deliveryMessage, setDeliveryMessage] = useState("");
   const firstError = useRef<HTMLDivElement>(null);
@@ -119,6 +145,7 @@ export function CheckoutPage({
     <section
       className="checkout section-shell"
       aria-labelledby="checkout-title"
+      aria-busy={orderFlow.pending}
     >
       <nav className="breadcrumb" aria-label="Ruta de navegación">
         <a href="#/">Inicio</a>
@@ -132,22 +159,83 @@ export function CheckoutPage({
         {finished ? "Recorrido completado." : "Checkout de demostración"}
       </h1>
       <p className="checkout-intro">
-        Una experiencia para explorar. Sin cobros, pedidos comerciales ni
-        reservas de stock.
+        {orders.enabled
+          ? "Demostración sin cobros ni pedidos comerciales. Las reservas de stock de demo duran 60 minutos."
+          : "Una experiencia para explorar. Sin cobros, pedidos comerciales ni reservas de stock."}
       </p>
+      {orders.enabled && !finished && orderFlow.error && (
+        <div className="checkout-notice" role="alert">
+          <p>{orderFlow.error}</p>
+          <button
+            className="cart-text-button"
+            onClick={() => {
+              cart.refresh();
+              cart.openCart();
+            }}
+          >
+            Revisar carrito
+          </button>
+        </div>
+      )}
+      {orders.enabled && !finished && orderFlow.recoverable && (
+        <div className="checkout-notice">
+          <p>
+            Hay un intento pendiente de consultar. Recuperá su resultado antes
+            de confirmar otra selección.
+          </p>
+          <button
+            className="button secondary"
+            disabled={orderFlow.pending}
+            onClick={() => void orderFlow.recover()}
+          >
+            Consultar confirmación pendiente
+          </button>
+        </div>
+      )}
+      {orderFlow.pending && (
+        <p role="status">
+          Confirmando con el servidor… No cierres esta pestaña.
+        </p>
+      )}
       {finished ? (
         <div className="checkout-finished">
           <span className="checkout-check" aria-hidden="true">
             ✓
           </span>
-          <h2>Recorrido de compra completado.</h2>
+          <h2>
+            {orderReceipt
+              ? "Pedido demo registrado."
+              : "Recorrido de compra completado."}
+          </h2>
+          {orderReceipt && (
+            <div role="status">
+              <p>
+                Referencia:{" "}
+                <strong style={{ overflowWrap: "anywhere" }}>
+                  {orderReceipt.reference}
+                </strong>
+              </p>
+              <p>Subtotal: {formatARS(orderReceipt.subtotal_cents)} ARS</p>
+              <p>
+                Reserva de demostración por 60 minutos desde la creación en el
+                servidor. Vence:{" "}
+                {new Date(orderReceipt.expires_at).toLocaleString("es-AR")}.
+              </p>
+              <p>
+                Solo los datos anonimizados de este pedido se guardaron. Las
+                prendas confirmadas se retiraron del carrito.
+              </p>
+            </div>
+          )}
           <p>
-            Esta es una demostración de VANTA Urban Wear. No se realizó ningún
-            cobro ni se registró un pedido real.
+            {orderReceipt
+              ? "Este pedido de demostración quedó registrado. No es una operación comercial y no se realizó ningún cobro."
+              : "Esta es una demostración de VANTA Urban Wear. No se realizó ningún cobro ni se registró un pedido real."}
           </p>
           <p>
-            Tu selección sigue en el carrito. No se enviaron correos ni
-            mensajes.
+            {orderReceipt
+              ? "No se enviaron correos ni mensajes. No se realizó ningún cobro."
+              : "Tu selección sigue en el carrito. No se enviaron correos ni mensajes."}
           </p>
           <div className="checkout-actions">
             <a className="button primary" href="#/catalogo">
@@ -186,7 +274,9 @@ export function CheckoutPage({
           <div className="checkout-demo-note">
             <p>
               Usá datos ficticios. Los datos del formulario se conservan solo en
-              memoria durante esta visita y se pierden al recargar.
+              memoria durante esta visita y se pierden al recargar.{" "}
+              {orders.enabled &&
+                "El servidor no recibe tus datos de contacto ni domicilio: guarda un comprador anonimizado, prendas, entrega y método simulado."}
             </p>
           </div>
           {step === "complete" && !completed && valid && (
@@ -494,6 +584,25 @@ export function CheckoutPage({
             </div>
             <CheckoutSummary draft={draft} />
           </div>
+          {step === "review" && orders.enabled && valid && (
+            <div className="checkout-demo-note">
+              <p>
+                Confirmar registra un pedido ficticio y reserva stock de
+                demostración durante 60 minutos. Máximo 12 unidades por pedido y
+                3 por variante. No hay cobros.
+              </p>
+              <p>
+                Si una respuesta se pierde, reintentar consulta el mismo
+                intento, incluso si después modificaste el carrito. No repitas
+                desde otra pestaña.
+              </p>
+              <OrderChallenge
+                key={challengeRevision}
+                siteKey={orders.siteKey}
+                onToken={acceptToken}
+              />
+            </div>
+          )}
           <div className="checkout-actions">
             {step === "details" ? (
               <button
@@ -507,14 +616,25 @@ export function CheckoutPage({
             ) : step === "review" && valid ? (
               <button
                 className="button primary"
-                disabled={!ready || !valid}
+                disabled={!ready || !valid || orderFlow.pending}
                 onClick={() => {
                   if (!ready || !valid) return;
-                  onComplete();
-                  window.location.hash = "/checkout/finalizado";
+                  if (orders.enabled) {
+                    void orderFlow.confirm(payload(), challenge).finally(() => {
+                      setChallenge("");
+                      setChallengeRevision((v) => v + 1);
+                    });
+                  } else {
+                    onComplete();
+                    window.location.hash = "/checkout/finalizado";
+                  }
                 }}
               >
-                Finalizar demostración
+                {orders.enabled
+                  ? orderFlow.pending
+                    ? "Confirmando…"
+                    : "Confirmar pedido demo"
+                  : "Finalizar demostración"}
               </button>
             ) : null}
             <button className="button secondary" onClick={cart.openCart}>

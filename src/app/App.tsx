@@ -1,5 +1,5 @@
 import { ArrowIcon } from "../components/ArrowIcon";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState, useRef } from "react";
 import { CatalogPage } from "../features/catalog/CatalogPage";
 import { ProductPage } from "../features/catalog/ProductPage";
 import { categoryHref, menuCategories } from "../features/catalog/model";
@@ -12,6 +12,13 @@ import { useRoute } from "./router";
 import { CartProvider } from "../features/cart/CartProvider";
 import { CartDrawer, CartTrigger } from "../features/cart/CartDrawer";
 import { CartFeedback } from "../features/cart/CartFeedback";
+import { useCart } from "../features/cart/context";
+import { useDemoOrder } from "../features/orders/useDemoOrder";
+import {
+  orderService,
+  type OrderService,
+  type Receipt,
+} from "../features/orders/service";
 import { initialDraft } from "../features/checkout/model";
 const CheckoutPage = lazy(() =>
   import("../features/checkout/CheckoutPage").then((module) => ({
@@ -129,16 +136,43 @@ function Home({ service }: { service: CatalogService }) {
 }
 export function App({
   service = catalogService,
+  orders = orderService,
 }: {
   service?: CatalogService;
+  orders?: OrderService;
 }) {
   return (
     <CartProvider service={service}>
-      <AppShell service={service} />
+      <AppShell service={service} orders={orders} />
     </CartProvider>
   );
 }
-function AppShell({ service }: { service: CatalogService }) {
+function AppShell({
+  service,
+  orders,
+}: {
+  service: CatalogService;
+  orders: OrderService;
+}) {
+  const cart = useCart();
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
+  const [orderReceipt, setOrderReceipt] = useState<Receipt | null>(null);
+  const orderFlow = useDemoOrder(orders, (result, submitted) => {
+    const current = cartRef.current;
+    // Preserve additions made during a slow request; remove only confirmed quantities.
+    for (const item of submitted.items) {
+      const line = current.entries.find(
+        (e) => e.line.variantId === item.variant_id,
+      )?.line;
+      if (!line) continue;
+      if (line.quantity <= item.quantity) current.remove(line.variantId);
+      else current.setQuantity(line.variantId, line.quantity - item.quantity);
+    }
+    setOrderReceipt(result);
+    setCheckoutCompleted(true);
+    window.location.hash = "/checkout/finalizado";
+  });
   const { route, routeKey } = useRoute();
   const [menuOpen, setMenuOpen] = useState(false);
   // Draft lives outside keyed route content, only in memory. No extra provider.
@@ -148,8 +182,10 @@ function AppShell({ service }: { service: CatalogService }) {
   const [checkoutCompleted, setCheckoutCompleted] = useState(false);
   const checkoutStep = route.kind === "checkout" ? route.step : null;
   useEffect(() => {
-    if (checkoutStep && checkoutStep !== "complete")
+    if (checkoutStep && checkoutStep !== "complete") {
       setCheckoutCompleted(false);
+      setOrderReceipt(null);
+    }
   }, [checkoutStep]);
   const pageTitle =
     route.kind === "checkout"
@@ -270,6 +306,9 @@ function AppShell({ service }: { service: CatalogService }) {
             }
           >
             <CheckoutPage
+              orders={orders}
+              orderFlow={orderFlow}
+              orderReceipt={orderReceipt}
               step={route.step}
               draft={checkoutDraft}
               setDraft={setCheckoutDraft}

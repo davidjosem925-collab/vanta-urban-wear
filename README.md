@@ -140,3 +140,8 @@ Checkout de demostración desde el carrito, con contacto, envío a coordinar o r
 ficticio, tres métodos simulados, revisión y finalización sin cobros ni pedidos.
 Los datos del comprador quedan solo en memoria; el carrito conserva su persistencia
 actual y no se vacía al finalizar. [Flujo, límites y prueba local](docs/stage-4-checkout.md).
+
+### Etapa 5 (preparada, sin despliegue remoto)
+
+Pedidos demo, reservas de 60 minutos y endpoint protegido; desactivado por defecto.
+[Arquitectura, pruebas y pasos de aprobación manual](docs/stage-5-orders-stock.md).
