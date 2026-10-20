@@ -22,8 +22,10 @@ export async function sha(value: string) {
 function validPayload(p: Record<string, unknown>) {
   if (
     Object.keys(p).sort().join(",") !== "delivery,items,payment" ||
-    !["shipping", "pickup"].includes(String(p.delivery)) ||
-    !["mercado_pago", "transfer", "cash"].includes(String(p.payment)) ||
+    typeof p.delivery !== "string" ||
+    !["shipping", "pickup"].includes(p.delivery) ||
+    typeof p.payment !== "string" ||
+    !["mercado_pago", "transfer", "cash"].includes(p.payment) ||
     (p.payment === "cash" && p.delivery !== "pickup") ||
     !Array.isArray(p.items) ||
     p.items.length < 1 ||
@@ -80,6 +82,21 @@ export function makeHandler(
       settings.actorSecret.length < 32
     )
       return reply(503, "NOT_CONFIGURED");
+    try {
+      const origin = new URL(settings.origin);
+      const local = ["localhost", "127.0.0.1", "[::1]"].includes(
+        origin.hostname,
+      );
+      if (
+        origin.origin !== settings.origin ||
+        origin.hostname !== settings.challengeHostname ||
+        (origin.protocol !== "https:" &&
+          !(local && origin.protocol === "http:"))
+      )
+        return reply(503, "NOT_CONFIGURED");
+    } catch {
+      return reply(503, "NOT_CONFIGURED");
+    }
     if (request.headers.get("origin") !== settings.origin)
       return reply(403, "FORBIDDEN");
     if (request.method === "OPTIONS")
@@ -162,13 +179,13 @@ export function makeHandler(
         p_payload: b.payload,
       };
       const replay = await rpc("demo_order_replay", args);
-      if (replay.error)
-        return reply(
-          409,
-          replay.error.message.includes("IDEMPOTENCY_EXPIRED")
-            ? "EXPIRED"
-            : "IDEMPOTENCY_CONFLICT",
-        );
+      if (replay.error) {
+        if (replay.error.message.includes("IDEMPOTENCY_EXPIRED"))
+          return reply(409, "EXPIRED");
+        if (replay.error.message.includes("IDEMPOTENCY_CONFLICT"))
+          return reply(409, "IDEMPOTENCY_CONFLICT");
+        return reply(503, "UNAVAILABLE");
+      }
       if (replay.data) return reply(200, "", replay.data);
       const challengeResponse = await fetcher(
         "https://challenges.cloudflare.com/turnstile/v0/siteverify",

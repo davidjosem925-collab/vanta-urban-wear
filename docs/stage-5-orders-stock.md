@@ -75,8 +75,10 @@ reservas y movimientos se validan/escriben dentro de `demo_create_order`.
 3. Reintento: se comprueban clave, capacidad y hash SHA-256 calculado dentro de SQL.
    JSONB normaliza claves de objetos; el cliente ordena artículos por variante.
    Un cuerpo distinto o capacidad diferente con la misma clave produce conflicto.
-4. Categorías, productos y variantes se bloquean `FOR SHARE`, por UUID, para
-   estabilizar publicación/precio; después inventarios `FOR UPDATE` por UUID.
+4. Se bloquean variantes, luego sus productos y luego sus categorías `FOR SHARE`,
+   por UUID dentro de cada nivel; después inventarios `FOR UPDATE` por UUID.
+   Derivar cada padre desde el hijo ya bloqueado protege las reasignaciones
+   concurrentes de variante/producto, publicación, precios y snapshots.
 5. Se leen precios actuales de `products`; el precio esperado del cliente **solo
    detecta cambios**. Cualquier diferencia rechaza el pedido, nunca se adopta el
    importe enviado por React. El subtotal se suma en bigint, sin flotantes.
@@ -103,7 +105,8 @@ No se reservan existencias parcialmente ni se descuentan dos veces.
 | pending → confirmed | reduce reserved **y** on_hand, marca consumed | admin activo mediante RPC |
 | confirmed → preparing → delivered | sin movimiento adicional | admin activo mediante RPC |
 
-Si el plazo venció antes del lock de confirmación/cancelación, gana `expired`.
+Si el plazo venció antes de obtener todos los locks de pedido e inventario, gana
+`expired`: la hora se vuelve a comprobar después de esperar inventario.
 Confirmar consume definitivamente la reserva: cambiar de estado no prolonga una
 reserva temporal. Después de `confirmed` no hay cancelación/reintegro automático.
 Esa política y cualquier devolución física quedan para etapa 6. Los RPC admin
@@ -119,7 +122,11 @@ EXECUTE de PUBLIC/anon/authenticated por defecto. Solo las RPC estrechas de Edge
 se conceden a service_role; `demo_admin_transition` se concede a authenticated
 pero **exige `is_admin()`**. El núcleo de resolución no es ejecutable por visitantes
 ni service_role. Expiración/limpieza solo las ejecuta el propietario DB/cron.
-Se revocan escrituras directas service_role sobre pedidos/ítems/stock/reservas.
+Se revocan todos los privilegios de service_role sobre pedidos/ítems/stock/reservas
+y se restituye únicamente SELECT; también se eliminan TRIGGER y REFERENCES. Una
+comprobación de privilegios efectivos de anon/authenticated/service_role hace
+fallar la migración si quedan escrituras heredadas. Las RPC usan al propietario
+confiable de las funciones, no los permisos DML del invocador.
 La clave sigue siendo privilegiada para otros recursos: nunca se distribuye.
 
 ## Idempotencia y recuperación
@@ -339,3 +346,8 @@ El build conserva una advertencia de tamaño del bundle principal (~504 kB,
 ~148 kB gzip); no es un error de TypeScript, no se elevó el umbral para ocultarla.
 La separación adicional de bundles queda como mejora de rendimiento independiente.
 La guía de revisión incluye las capturas de recibo en los cinco anchos.
+
+
+La [auditoría técnica final y guía verificable de despliegue](stage-5-final-audit.md)
+incorpora las comprobaciones reales aportadas por el operador y las correcciones
+de concurrencia y privilegios realizadas antes de aprobar la migración.

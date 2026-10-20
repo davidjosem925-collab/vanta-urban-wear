@@ -467,3 +467,149 @@ it("service RPC works while direct tables remain unwritable, with no public EXEC
     funcs.every((f) => (f.proconfig as string[]).includes('search_path=""')),
   ).toBe(true);
 });
+it("service-only lifecycle survives DML revocation; helpers/jobs cannot be invoked by API roles", async () => {
+  let r: Record<string, unknown>;
+  await db.exec("set role service_role");
+  try {
+    r = await create();
+    const replay = await db.query(
+      "select public.demo_order_replay($1,$2,$3::jsonb) r",
+      [
+        (await db.query("select idempotency_key from public.orders")).rows[0]
+          .idempotency_key,
+        owner,
+        JSON.stringify(payload()),
+      ],
+    );
+    expect(replay.rows[0].r).toEqual(r);
+    await db.query("select public.demo_cancel_order($1,$2)", [
+      r.reference,
+      owner,
+    ]);
+    for (const fn of [
+      "demo_expire_orders()",
+      "demo_cleanup()",
+      `demo_resolve_order('${a}','confirmed')`,
+      `demo_admin_transition('${a}','confirmed')`,
+    ])
+      await expect(db.query("select public." + fn)).rejects.toThrow(
+        /permission denied/,
+      );
+    for (const table of [
+      "orders",
+      "order_items",
+      "inventory",
+      "stock_reservations",
+      "inventory_movements",
+    ])
+      for (const privilege of [
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "TRUNCATE",
+        "REFERENCES",
+        "TRIGGER",
+      ])
+        expect(
+          (
+            await db.query(
+              "select has_table_privilege(current_user,$1,$2) ok",
+              ["public." + table, privilege],
+            )
+          ).rows[0].ok,
+        ).toBe(false);
+  } finally {
+    await db.exec("reset role");
+  }
+  const order = (await db.query("select status from public.orders")).rows[0];
+  expect(order.status).toBe("cancelled");
+  expect(
+    (
+      await db.query(
+        "select reserved from public.inventory where variant_id=$1",
+        [a],
+      )
+    ).rows[0].reserved,
+  ).toBe(0);
+});
+it("anonymous EXECUTE is absent on every demo function, including new defaults", async () => {
+  const fns = (
+    await db.query(
+      "select p.oid,proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and proname like 'demo_%'",
+    )
+  ).rows;
+  for (const fn of fns) {
+    expect(
+      (
+        await db.query(
+          "select has_function_privilege('anon',$1::oid,'EXECUTE') ok",
+          [fn.oid],
+        )
+      ).rows[0].ok,
+    ).toBe(false);
+  }
+});
+
+it("post-deployment read-only verification script is compatible with the migrated schema", async () => {
+  await create();
+  await db.exec(readFileSync("supabase/operations/stage-5-verify.sql", "utf8"));
+});
+it("migration fails atomically if PUBLIC/inheritance leaves unexpected write privileges", async () => {
+  const isolated = await createDemoDb();
+  try {
+    await isolated.exec("grant trigger on public.inventory to public");
+    await expect(
+      isolated.exec(
+        readFileSync(
+          "supabase/migrations/202610200001_demo_orders.sql",
+          "utf8",
+        ),
+      ),
+    ).rejects.toThrow(/Unexpected effective TRIGGER privilege/);
+    await isolated.exec("rollback");
+    expect(
+      (
+        await isolated.query(
+          "select column_name from information_schema.columns where table_schema='public' and table_name='orders' and column_name='is_demo'",
+        )
+      ).rows,
+    ).toHaveLength(0);
+    expect(
+      (
+        await isolated.query(
+          "select to_regprocedure('public.demo_create_order(uuid,text,jsonb)') fn",
+        )
+      ).rows[0].fn,
+    ).toBeNull();
+  } finally {
+    await isolated.close();
+  }
+});
+it("migration preserves legacy paid orders and existing inventory without converting or reserving data", async () => {
+  const isolated = await createDemoDb();
+  try {
+    await isolated.exec(
+      `insert into public.orders(idempotency_key,request_hash,status,first_name,last_name,email,phone,subtotal_cents) values(gen_random_uuid(),repeat('a',64),'paid','Old','Demo','old@example.invalid','00000000',500);insert into public.categories(id,name,slug,active) values('${a}','Local','local',true);insert into public.products(id,category_id,name,slug,price_cents,active) values('${a}','${a}','Local','local',500,true);insert into public.product_variants(id,product_id,sku,size,color,active) values('${a}','${a}','LOCAL','M','Negro',true);insert into public.inventory(variant_id,on_hand) values('${a}',6);`,
+    );
+    const inventory = (await isolated.query("select * from public.inventory"))
+      .rows;
+    await isolated.exec(
+      readFileSync("supabase/operations/stage-5-preflight.sql", "utf8"),
+    );
+    await isolated.exec(
+      readFileSync("supabase/migrations/202610200001_demo_orders.sql", "utf8"),
+    );
+    expect(
+      (
+        await isolated.query(
+          "select status,is_demo,public_reference from public.orders",
+        )
+      ).rows,
+    ).toEqual([{ status: "paid", is_demo: false, public_reference: null }]);
+    expect(
+      (await isolated.query("select * from public.inventory")).rows,
+    ).toEqual(inventory);
+  } finally {
+    await isolated.close();
+  }
+});

@@ -1,4 +1,9 @@
 begin;
+do $$ begin
+ if current_user in ('anon','authenticated','service_role') then
+   raise exception 'Apply as trusted migration owner, never an API role';
+ end if;
+end $$;
 -- Extend existing concepts. Legacy commercial rows are never converted to demo rows.
 alter table public.orders
   drop constraint orders_status_check,
@@ -57,7 +62,10 @@ revoke all on public.inventory_movements, public.demo_request_limits from public
 grant select on public.inventory_movements to authenticated;
 create policy admin_read on public.inventory_movements for select to authenticated using ((select public.is_admin()));
 -- The edge service may execute narrowly scoped RPCs, not perform arbitrary writes.
-revoke insert, update, delete, truncate on public.orders, public.order_items, public.stock_reservations, public.inventory, public.inventory_movements from service_role;
+-- Revoke TRIGGER/REFERENCES too: TRIGGER must not offer a path to code running
+-- during owner-privileged RPC writes. Keep the existing read-only service access.
+revoke all on public.orders, public.order_items, public.stock_reservations, public.inventory from service_role;
+grant select on public.orders, public.order_items, public.stock_reservations, public.inventory to service_role;
 create index demo_orders_expiry on public.orders(reservation_expires_at, id) where is_demo and status = 'pending';
 
 create function public.demo_receipt(p_order public.orders) returns jsonb
@@ -160,15 +168,17 @@ begin
    or (select count(*) from public.orders where is_demo and status='pending' and owner_hash=p_owner) >= 2
    or coalesce((select sum(r.quantity) from public.stock_reservations r join public.orders q on q.id=r.order_id where q.is_demo and r.status='active'),0) + units > 80
  then raise exception 'DEMO_CAPACITY'; end if;
- -- Stabilize publication and prices, then inventory; always deterministic UUID ordering.
+ -- Lock children before deriving their parents. A concurrent reassignment of
+ -- variant.product_id or product.category_id cannot leave the new parent unlocked.
+ -- UUID order is deterministic within each level, inventory is always last.
+ perform pv.id from public.product_variants pv where pv.id in (select (value->>'variant_id')::uuid from jsonb_array_elements(p_payload->'items')) order by pv.id for share;
+ perform p.id from public.products p where p.id in (
+   select pv.product_id from public.product_variants pv where pv.id in (select (value->>'variant_id')::uuid from jsonb_array_elements(p_payload->'items'))
+ ) order by p.id for share;
  perform c.id from public.categories c where c.id in (
    select p.category_id from public.products p join public.product_variants pv on pv.product_id=p.id
    where pv.id in (select (value->>'variant_id')::uuid from jsonb_array_elements(p_payload->'items'))
  ) order by c.id for share;
- perform p.id from public.products p where p.id in (
-   select pv.product_id from public.product_variants pv where pv.id in (select (value->>'variant_id')::uuid from jsonb_array_elements(p_payload->'items'))
- ) order by p.id for share;
- perform pv.id from public.product_variants pv where pv.id in (select (value->>'variant_id')::uuid from jsonb_array_elements(p_payload->'items')) order by pv.id for share;
  perform i.variant_id from public.inventory i where i.variant_id in (select (value->>'variant_id')::uuid from jsonb_array_elements(p_payload->'items')) order by i.variant_id for update;
  for item in select value from jsonb_array_elements(p_payload->'items') order by value->>'variant_id' loop
    select pv.*,p.price_cents,p.name,p.description,p.category_id into v
@@ -205,11 +215,12 @@ begin
  select * into o from public.orders where id=p_id and is_demo for update;
  if not found then raise exception 'ORDER_UNAVAILABLE'; end if;
  if o.status <> 'pending' then return false; end if;
- if p_target not in ('cancelled','expired','confirmed') then raise exception 'INVALID_TRANSITION'; end if;
+ if p_target is null or p_target not in ('cancelled','expired','confirmed') then raise exception 'INVALID_TRANSITION'; end if;
+ perform i.variant_id from public.inventory i join public.stock_reservations s on s.variant_id=i.variant_id where s.order_id=o.id and s.status='active' order by i.variant_id for update of i;
+ -- Check the server deadline AFTER any inventory-lock wait, not before it.
  if o.reservation_expires_at <= clock_timestamp() then p_target := 'expired';
  elsif p_target='expired' then return false; end if;
  kind := case p_target when 'confirmed' then 'consume' when 'expired' then 'expire' else 'release' end;
- perform i.variant_id from public.inventory i join public.stock_reservations s on s.variant_id=i.variant_id where s.order_id=o.id and s.status='active' order by i.variant_id for update of i;
  for r in select * from public.stock_reservations where order_id=o.id and status='active' order by variant_id for update loop
    update public.inventory set reserved=reserved-r.quantity, on_hand=on_hand-case when p_target='confirmed' then r.quantity else 0 end where variant_id=r.variant_id;
    update public.stock_reservations set status=case when p_target='confirmed' then 'consumed' when p_target='expired' then 'expired' else 'released' end where id=r.id;
@@ -304,5 +315,18 @@ do $$ declare f text; begin
 end $$;
 grant execute on function public.demo_admit_creation(),public.demo_rate_limit(text),public.demo_order_replay(uuid,text,jsonb),public.demo_create_order(uuid,text,jsonb),public.demo_cancel_order(uuid,text) to service_role;
 grant execute on function public.demo_admin_transition(uuid,text),public.demo_admin_adjust_inventory(uuid,integer,text,uuid) to authenticated;
+-- Effective privileges include PUBLIC and inherited roles. Fail closed on drift;
+-- a REVOKE on one role alone cannot cancel privileges inherited from another.
+do $$ declare t text; priv text; api_role text; begin
+ foreach api_role in array array['anon','authenticated','service_role'] loop
+ foreach t in array array['orders','order_items','stock_reservations','inventory','inventory_movements'] loop
+   foreach priv in array array['INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] loop
+     if has_table_privilege(api_role,'public.'||t,priv) then
+       raise exception 'Unexpected effective % privilege on % for %; inspect inherited grants',priv,t,api_role;
+     end if;
+   end loop;
+ end loop;
+ end loop;
+end $$;
 -- Expiration/cleanup are database-owner jobs, not web endpoints.
 commit;

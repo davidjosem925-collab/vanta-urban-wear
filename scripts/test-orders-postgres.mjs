@@ -47,6 +47,79 @@ function sql(text, db = "vanta_stage5_test") {
     p.stdin.end(text);
   });
 }
+// Keep transactions open with explicit readiness barriers, never timing guesses.
+const held = new Set();
+async function hold(text) {
+  const p = spawn(
+    "docker",
+    [
+      "--host=unix:///var/run/docker.sock",
+      "exec",
+      "-i",
+      container,
+      "psql",
+      "-q",
+      "-U",
+      "postgres",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-At",
+      "-d",
+      "vanta_stage5_test",
+    ],
+    { env },
+  );
+  let output = "",
+    err = "";
+  const done = new Promise((resolve, reject) => {
+    p.on("error", reject);
+    p.on("close", (code) => (code ? reject(new Error(err)) : resolve()));
+  });
+  done.catch(() => {});
+  p.stderr.on("data", (d) => (err += d));
+  const ready = new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("Local lock barrier timed out")),
+      8000,
+    );
+    p.stdout.on("data", (d) => {
+      output += d;
+      if (output.includes("VANTA_LOCKED")) {
+        clearTimeout(timer);
+        resolve(Number(output.split("\n").find((l) => /^\d+$/.test(l))));
+      }
+    });
+    done.catch((e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
+  });
+  p.stdin.write(
+    "begin;select pg_backend_pid();" + text + "\n\\echo VANTA_LOCKED\n",
+  );
+  const tx = {
+    pid: await ready,
+    async finish() {
+      p.stdin.end("commit;\n");
+      await done;
+      held.delete(tx);
+    },
+    async abort() {
+      p.stdin.end("rollback;\n");
+      await done.catch(() => {});
+    },
+  };
+  held.add(tx);
+  return tx;
+}
+async function until(query) {
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    if ((await sql(query)) === "t") return;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error("Local PostgreSQL barrier condition not reached");
+}
 const a = "10000000-0000-0000-0000-000000000001",
   b = "10000000-0000-0000-0000-000000000002";
 const body = (variant = a) =>
@@ -163,6 +236,141 @@ try {
     /permission denied/,
   );
   console.log("PASS real PostgreSQL role privileges and private receipts");
+  await reset();
+  await sql(
+    `insert into auth.users(id) values('${a}');insert into public.admin_profiles(user_id,display_name) values('${a}','Local admin');`,
+  );
+  const accepted = JSON.parse(await create());
+  await sql(
+    `set role authenticated;select set_config('request.jwt.claim.sub','${a}',false);select public.demo_admin_transition((select id from public.orders where public_reference='${accepted.reference}'),'confirmed');`,
+  );
+  assert.equal(await sql("select status from public.orders"), "confirmed");
+  assert.equal(
+    await sql(
+      `select on_hand||':'||reserved from public.inventory where variant_id='${a}'`,
+    ),
+    "0:0",
+  );
+  await sql("select public.demo_expire_orders();");
+  assert.equal(
+    await sql(
+      `select on_hand||':'||reserved from public.inventory where variant_id='${a}'`,
+    ),
+    "0:0",
+  );
+  console.log(
+    "PASS authenticated admin consumes stock without direct DML grants; cron cannot release consumed stock",
+  );
+  await reset();
+  const late = JSON.parse(await create());
+  await sql(
+    "with stamp as materialized(select clock_timestamp()-interval '59 minutes 55 seconds' t) update public.orders set created_at=stamp.t,reservation_expires_at=stamp.t+interval '60 minutes' from stamp;",
+  );
+  const stock = await hold(
+    `select variant_id from public.inventory where variant_id='${a}' for update;`,
+  );
+  const pending = sql(
+    `set application_name='vanta-confirm-wait';set role authenticated;select set_config('request.jwt.claim.sub','${a}',false);select public.demo_admin_transition((select id from public.orders where public_reference='${late.reference}'),'confirmed');`,
+  );
+  pending.catch(() => {});
+  await until(
+    `select exists(select 1 from pg_stat_activity where application_name='vanta-confirm-wait' and ${stock.pid}=any(pg_blocking_pids(pid)));`,
+  );
+  assert.equal(
+    await sql(
+      "select reservation_expires_at>clock_timestamp() from public.orders;",
+    ),
+    "t",
+    "confirmation must already be waiting BEFORE expiry",
+  );
+  await until(
+    "select reservation_expires_at<=clock_timestamp() from public.orders;",
+  );
+  await stock.finish();
+  await pending;
+  assert.equal(await sql("select status from public.orders"), "expired");
+  assert.equal(
+    await sql(
+      `select on_hand||':'||reserved from public.inventory where variant_id='${a}'`,
+    ),
+    "1:0",
+  );
+  console.log(
+    "PASS confirmation waiting on inventory cannot consume after the server deadline",
+  );
+
+  await reset();
+  await sql(
+    `insert into public.products(id,category_id,name,slug,price_cents,active) values('${b}','${a}','New parent','new-parent',2500050,true);`,
+  );
+  const inventoryLock = await hold(
+    `select variant_id from public.inventory where variant_id='${a}' for update;`,
+  );
+  const variantLock = await hold(
+    `update public.product_variants set product_id='${b}' where id='${a}';`,
+  );
+  const relocating = sql(
+    `set application_name='vanta-reparent-wait';select public.demo_create_order('${randomUUID()}','${"b".repeat(64)}','${body()}'::jsonb);`,
+  );
+  relocating.catch(() => {});
+  await until(
+    `select exists(select 1 from pg_stat_activity where application_name='vanta-reparent-wait' and ${variantLock.pid}=any(pg_blocking_pids(pid)));`,
+  );
+  await variantLock.finish();
+  await until(
+    `select exists(select 1 from pg_stat_activity where application_name='vanta-reparent-wait' and ${inventoryLock.pid}=any(pg_blocking_pids(pid)));`,
+  );
+  await assert.rejects(
+    sql(
+      `set lock_timeout='200ms';update public.products set price_cents=1 where id='${b}';`,
+    ),
+    /lock timeout/,
+  );
+  await inventoryLock.finish();
+  await relocating;
+  assert.equal(
+    await sql(
+      "select subtotal_cents=(select sum(line_total_cents) from public.order_items) from public.orders",
+    ),
+    "t",
+  );
+  assert.equal(await sql(`select product_id from public.order_items`), b);
+  console.log(
+    "PASS concurrent variant reassignment locks the new product and preserves snapshots/totals",
+  );
+
+  await reset();
+  const serviceReceipt = JSON.parse(
+    (
+      await sql(
+        `set role service_role;select public.demo_create_order('${randomUUID()}','${"c".repeat(64)}','${body()}'::jsonb);`,
+      )
+    )
+      .split("\n")
+      .at(-1),
+  );
+  await sql(
+    `set role service_role;select public.demo_cancel_order('${serviceReceipt.reference}','${"c".repeat(64)}');`,
+  );
+  assert.equal(await sql("select status from public.orders"), "cancelled");
+  for (const privilege of [
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+    "TRUNCATE",
+    "REFERENCES",
+    "TRIGGER",
+  ])
+    assert.equal(
+      await sql(
+        `select has_table_privilege('service_role','public.inventory','${privilege}');`,
+      ),
+      "f",
+    );
+  console.log(
+    "PASS service_role RPC creation/cancellation with all direct write/trigger privileges revoked",
+  );
 } finally {
+  for (const tx of held) await tx.abort();
   await sql("drop database if exists vanta_stage5_test;", "postgres");
 }

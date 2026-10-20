@@ -242,3 +242,52 @@ it("invalid JSON returns 400 and a failed challenge does not consume global crea
     false,
   );
 });
+it("replay infrastructure failures remain retryable, not false idempotency conflicts", async () => {
+  const rpc = rpcMock();
+  rpc.mockImplementation(async (name) => ({
+    data: name === "demo_rate_limit" ? true : null,
+    error:
+      name === "demo_order_replay"
+        ? { message: "permission denied / internal details" }
+        : null,
+  }));
+  const response = await makeHandler(config, rpc, challenge())(request());
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({ error: "UNAVAILABLE" });
+  expect(rpc.mock.calls.some((c) => c[0] === "demo_create_order")).toBe(false);
+});
+it("rejects array-valued delivery and payment instead of coercing them to strings", async () => {
+  for (const payload of [
+    { ...body().payload, delivery: ["pickup"] },
+    { ...body().payload, payment: ["transfer"] },
+  ]) {
+    const rpc = rpcMock();
+    expect(
+      (
+        await makeHandler(
+          config,
+          rpc,
+          challenge(),
+        )(request({ ...body(), payload }))
+      ).status,
+    ).toBe(400);
+    expect(rpc.mock.calls.some((c) => c[0] === "demo_admit_creation")).toBe(
+      false,
+    );
+  }
+});
+it("invalid origin/hostname configuration fails closed before RPC or challenge verification", async () => {
+  for (const settings of [
+    { ...config, challengeHostname: "other.example" },
+    { ...config, origin: "https://vanta.example/path" },
+    { ...config, origin: "http://vanta.example" },
+  ]) {
+    const rpc = rpcMock(),
+      fetcher = challenge();
+    expect((await makeHandler(settings, rpc, fetcher)(request())).status).toBe(
+      503,
+    );
+    expect(rpc).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+  }
+});
