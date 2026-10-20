@@ -58,7 +58,9 @@ migración ya existe, detenerse y revisarlo; no forzar su reaplicación.
 
 ### 2. Usuario administrativo y Auth
 
-En Dashboard > Authentication, crear o invitar el usuario por un canal confiable.
+En Dashboard > Authentication, crear el usuario por un canal confiable.
+Para establecer su primera contraseña puede usar la recuperación del panel; no
+depender de un enlace de invitación implícito, que este panel no procesa.
 Usar contraseña fuerte (mínimo recomendado 12 caracteres), desactivar registro
 público y habilitar inscripción/verificación TOTP. Configurar el servicio de correo
 para invitaciones y recuperación, con sus límites de Auth habilitados.
@@ -75,8 +77,8 @@ set display_name=excluded.display_name, active=excluded.active;
 ```
 
 La FK evita usuarios inexistentes, pero no identifica por vos a la persona correcta.
-No conceder DML de esta tabla a authenticated ni usar user_metadata para autorizar.
-No guardar contraseña, secreto TOTP, service_role o sb_secret_* en VITE_* ni Git.
+No conceder DML de esta tabla a authenticated ni usar user*metadata para autorizar.
+No guardar contraseña, secreto TOTP, service_role o sb_secret*_ en VITE\__ ni Git.
 
 ### 3. Migración incremental, una vez
 
@@ -99,7 +101,19 @@ usen. La recuperación usa:
 `https://DOMINIO_APROBADO/?admin_recovery=1#/admin`
 
 En desarrollo: `http://localhost:5173/?admin_recovery=1#/admin` (o el hostname/puerto
-real, sin alternarlos durante PKCE). Sin comodines abiertos de otros dominios.
+real, sin alternarlos durante PKCE).
+
+El SDK añade `sb_flow_id` al callback. Además del callback base, permitir su patrón
+acotado, con host y ruta fijos, para cada origen aprobado:
+
+```text
+https://DOMINIO_APROBADO/?admin_recovery=1&sb_flow_id=*#/admin
+http://localhost:5173/?admin_recovery=1&sb_flow_id=*#/admin
+```
+
+El único comodín corresponde al identificador temporal del SDK; no abrir hosts,
+puertos ni rutas arbitrarias. Confirmar en el correo de prueba que se conserva
+`admin_recovery=1`, `sb_flow_id` y `#/admin` (sin copiar códigos a logs o capturas).
 Abrir el enlace del correo en el mismo navegador donde se solicitó. El código se
 consume una vez, se retira de la URL y se exige acceso/MFA antes de cambiar clave.
 Un enlace caducado o de otro navegador requiere solicitar otro, no saltarse MFA.
@@ -131,7 +145,7 @@ permitidos por la Edge y Cloudflare, sin desactivar Turnstile o ampliar orígene
 
 `vercel.json` prepara build/output y cabeceras (CSP, no-referrer, nosniff, antiframing,
 HTTPS). El CSP incluye el dominio público actual de Supabase y Turnstile. Si se
-elige otro hosting/proyecto, revisar explícitamente esos orígenes, no usar *.
+elige otro hosting/proyecto, revisar explícitamente esos orígenes, no usar \*.
 No contiene credenciales ni dispara un deploy desde esta PR. Al conectar Git a un
 hosting, configurar primero el control de despliegues para que un push no publique
 sin la aprobación requerida. Comprobar HTTPS, callback, login/MFA, recuperación y
@@ -157,7 +171,9 @@ requiere revertir SQL, preparar una migración correctiva revisada y respaldada.
   enrolamiento TOTP, códigos reales, JWT AAL1/AAL2, firma manipulada, metadata sin
   privilegios, RLS/RPC y revocación. Crea/borra solo esos contenedores con datos
   ficticios. Docker debe estar disponible; las imágenes públicas se descargan si
-  faltan. No toma credenciales/URLs del proyecto real. CI incluye este comando.
+  faltan. Estos scripts de contenedores usan el socket Unix de Docker: ejecutar
+  en Linux o WSL con Docker disponible; CI los ejecuta en Ubuntu. No toman
+  credenciales/URLs del proyecto real. CI incluye este comando.
 - `npm run test:e2e`: tienda/carrito/checkout y panel a 320/375/393/820/1440 px.
   Fixture de Auth/API para UX, no prueba de correo ni del Storage HTTP alojado.
 - `npm run test:e2e:orders`, pruebas Deno y controles demo/images offline conservados.
