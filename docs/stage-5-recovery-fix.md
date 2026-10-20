@@ -110,3 +110,10 @@ También se comprueba replay tras respuesta perdida y una única llamada de crea
 Las suites existentes conservan pruebas SQL de concurrencia, expiración y stock.
 Los resultados finales de ejecución figuran en la PR; los escenarios de navegador
 usan fixtures interceptados, sin escribir en Supabase.
+
+## Diagnóstico posterior de la creación
+
+Para el 503 de Siteverify informado después de esta corrección, ver
+[Diagnóstico seguro de Siteverify y RPC](stage-5-siteverify-diagnostics.md).
+Añade logs estructurados sin datos sensibles y un procedimiento de una sola
+confirmación controlada; no requiere migraciones ni cambios de secretos.

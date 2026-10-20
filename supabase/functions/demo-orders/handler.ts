@@ -1,8 +1,12 @@
-/** Runtime-neutral edge handler. No request/PII logging, no public order-reading endpoint. */
-export type Rpc = (
-  name: string,
-  args: Record<string, unknown>,
-) => Promise<{ data: unknown; error: { message: string } | null }>;
+/** Runtime-neutral edge handler. Only closed-vocabulary diagnostics; no request/PII logging. */
+import {
+  diagnostic,
+  DependencyError,
+  isTimeout,
+  type DiagnosticSink,
+} from "./diagnostics.ts";
+import type { Rpc } from "./rpc.ts";
+export type { Rpc } from "./rpc.ts";
 export type Settings = {
   origin: string;
   challengeSecret: string;
@@ -60,8 +64,48 @@ export function makeHandler(
   settings: Settings,
   rpc: Rpc,
   fetcher: typeof fetch = fetch,
+  log: DiagnosticSink = () => {},
 ) {
   return async (request: Request): Promise<Response> => {
+    const trace = diagnostic(log);
+    const started = performance.now();
+    let responseStatus = 503;
+    const callRpc: Rpc = async (name, args) => {
+      const since = performance.now();
+      try {
+        const result = await rpc(name, args);
+        trace.record(
+          name,
+          "result",
+          result.error
+            ? "rpc_error"
+            : ["demo_rate_limit", "demo_admit_creation"].includes(name) &&
+                result.data !== true
+              ? "rejected"
+              : "ok",
+          since,
+          result.error?.diagnostic?.status,
+          result.error ? (result.error.diagnostic?.code ?? "other") : undefined,
+        );
+        return result;
+      } catch (error) {
+        const failure =
+          error instanceof DependencyError
+            ? error
+            : new DependencyError(
+                isTimeout(error) ? "timeout" : "unexpected_error",
+                "request",
+              );
+        trace.record(
+          name,
+          failure.phase,
+          failure.outcome,
+          since,
+          failure.status,
+        );
+        throw failure;
+      }
+    };
     const headers = {
       "Access-Control-Allow-Origin": settings.origin,
       Vary: "Origin",
@@ -70,194 +114,304 @@ export function makeHandler(
       "Cache-Control": "no-store",
       "Content-Type": "application/json",
     };
-    const reply = (status: number, code: string, data?: unknown) =>
-      new Response(JSON.stringify(data ?? { error: code }), {
+    const reply = (status: number, code: string, data?: unknown) => {
+      responseStatus = status;
+      return new Response(JSON.stringify(data ?? { error: code }), {
         status,
         headers,
       });
-    if (
-      !settings.origin ||
-      !settings.challengeSecret ||
-      !settings.challengeHostname ||
-      settings.actorSecret.length < 32
-    )
-      return reply(503, "NOT_CONFIGURED");
-    try {
-      const origin = new URL(settings.origin);
-      const local = ["localhost", "127.0.0.1", "[::1]"].includes(
-        origin.hostname,
-      );
+    };
+    const run = async (): Promise<Response> => {
       if (
-        origin.origin !== settings.origin ||
-        origin.hostname !== settings.challengeHostname ||
-        (origin.protocol !== "https:" &&
-          !(local && origin.protocol === "http:"))
-      )
+        !settings.origin ||
+        !settings.challengeSecret ||
+        !settings.challengeHostname ||
+        settings.actorSecret.length < 32
+      ) {
+        trace.record("configuration", "validation", "rejected", started);
         return reply(503, "NOT_CONFIGURED");
-    } catch {
-      return reply(503, "NOT_CONFIGURED");
-    }
-    if (request.headers.get("origin") !== settings.origin)
-      return reply(403, "FORBIDDEN");
-    if (request.method === "OPTIONS")
-      return new Response(null, { status: 204, headers });
-    if (request.method !== "POST") return reply(405, "METHOD_NOT_ALLOWED");
-    if (!request.headers.get("content-type")?.startsWith("application/json"))
-      return reply(415, "INVALID_REQUEST");
-    if (Number(request.headers.get("content-length")) > 8192)
-      return reply(413, "REQUEST_TOO_LARGE");
-    // Bounded stream read; Content-Length alone is untrusted and may be absent.
-    let text = "";
-    let size = 0;
-    const reader = request.body?.getReader();
-    if (!reader) return reply(400, "INVALID_REQUEST");
-    try {
-      const decoder = new TextDecoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        size += value.byteLength;
-        if (size > 8192) {
-          await reader.cancel();
-          return reply(413, "REQUEST_TOO_LARGE");
-        }
-        text += decoder.decode(value, { stream: true });
       }
-      text += decoder.decode();
-      let b;
       try {
-        b = JSON.parse(text);
-      } catch {
-        return reply(400, "INVALID_REQUEST");
-      }
-      if (
-        !b ||
-        typeof b !== "object" ||
-        !["create", "recover", "cancel"].includes(b.action) ||
-        typeof b.capability !== "string" ||
-        !/^[a-f0-9]{64}$/.test(b.capability)
-      )
-        return reply(400, "INVALID_REQUEST");
-      const owner = await sha(b.capability);
-      // Gateway must overwrite/append X-Forwarded-For. Last hop is a rate bucket only,
-      // never authorization. Global DB limits and mandatory Turnstile do not rely on it.
-      const hop =
-        request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() ||
-        "unknown";
-      const actor = await sha(`${settings.actorSecret}:${hop}`);
-      const limit = await rpc("demo_rate_limit", { p_actor: actor });
-      if (limit.error) return reply(503, "UNAVAILABLE");
-      if (limit.data !== true) return reply(429, "RATE_LIMITED");
-      if (b.action === "cancel") {
+        const origin = new URL(settings.origin);
+        const local = ["localhost", "127.0.0.1", "[::1]"].includes(
+          origin.hostname,
+        );
         if (
-          Object.keys(b).sort().join(",") !== "action,capability,reference" ||
-          !uuid.test(b.reference)
+          origin.origin !== settings.origin ||
+          origin.hostname !== settings.challengeHostname ||
+          (origin.protocol !== "https:" &&
+            !(local && origin.protocol === "http:"))
+        ) {
+          trace.record("configuration", "validation", "rejected", started);
+          return reply(503, "NOT_CONFIGURED");
+        }
+      } catch {
+        trace.record("configuration", "validation", "rejected", started);
+        return reply(503, "NOT_CONFIGURED");
+      }
+      if (request.headers.get("origin") !== settings.origin) {
+        trace.record("request", "validation", "rejected", started);
+        return reply(403, "FORBIDDEN");
+      }
+      if (request.method === "OPTIONS")
+        return new Response(null, { status: 204, headers });
+      if (request.method !== "POST") return reply(405, "METHOD_NOT_ALLOWED");
+      if (!request.headers.get("content-type")?.startsWith("application/json"))
+        return reply(415, "INVALID_REQUEST");
+      if (Number(request.headers.get("content-length")) > 8192)
+        return reply(413, "REQUEST_TOO_LARGE");
+      // Bounded stream read; Content-Length alone is untrusted and may be absent.
+      let text = "";
+      let size = 0;
+      const reader = request.body?.getReader();
+      if (!reader) return reply(400, "INVALID_REQUEST");
+      try {
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > 8192) {
+            await reader.cancel();
+            return reply(413, "REQUEST_TOO_LARGE");
+          }
+          text += decoder.decode(value, { stream: true });
+        }
+        text += decoder.decode();
+        let b;
+        try {
+          b = JSON.parse(text);
+        } catch {
+          return reply(400, "INVALID_REQUEST");
+        }
+        if (
+          !b ||
+          typeof b !== "object" ||
+          !["create", "recover", "cancel"].includes(b.action) ||
+          typeof b.capability !== "string" ||
+          !/^[a-f0-9]{64}$/.test(b.capability)
         )
           return reply(400, "INVALID_REQUEST");
-        const result = await rpc("demo_cancel_order", {
-          p_reference: b.reference,
+        const owner = await sha(b.capability);
+        // Gateway must overwrite/append X-Forwarded-For. Last hop is a rate bucket only,
+        // never authorization. Global DB limits and mandatory Turnstile do not rely on it.
+        const hop =
+          request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() ||
+          "unknown";
+        const actor = await sha(`${settings.actorSecret}:${hop}`);
+        const limit = await callRpc("demo_rate_limit", { p_actor: actor });
+        if (limit.error) return reply(503, "UNAVAILABLE");
+        if (limit.data !== true) return reply(429, "RATE_LIMITED");
+        if (b.action === "cancel") {
+          if (
+            Object.keys(b).sort().join(",") !== "action,capability,reference" ||
+            !uuid.test(b.reference)
+          )
+            return reply(400, "INVALID_REQUEST");
+          const result = await callRpc("demo_cancel_order", {
+            p_reference: b.reference,
+            p_owner: owner,
+          });
+          return result.error
+            ? reply(404, "ORDER_UNAVAILABLE")
+            : reply(200, "", { cancelled: result.data === true });
+        }
+        if (
+          Object.keys(b).sort().join(",") !==
+            (b.action === "recover"
+              ? "action,capability,idempotency_key,payload"
+              : "action,capability,challenge,idempotency_key,payload") ||
+          !uuid.test(b.idempotency_key) ||
+          !b.payload ||
+          typeof b.payload !== "object" ||
+          !validPayload(b.payload) ||
+          (b.action === "create" &&
+            (typeof b.challenge !== "string" || b.challenge.length > 2048))
+        )
+          return reply(400, "INVALID_REQUEST");
+        const args = {
+          p_key: b.idempotency_key,
           p_owner: owner,
-        });
-        return result.error
-          ? reply(404, "ORDER_UNAVAILABLE")
-          : reply(200, "", { cancelled: result.data === true });
-      }
-      if (
-        Object.keys(b).sort().join(",") !==
-          (b.action === "recover"
-            ? "action,capability,idempotency_key,payload"
-            : "action,capability,challenge,idempotency_key,payload") ||
-        !uuid.test(b.idempotency_key) ||
-        !b.payload ||
-        typeof b.payload !== "object" ||
-        !validPayload(b.payload) ||
-        (b.action === "create" &&
-          (typeof b.challenge !== "string" || b.challenge.length > 2048))
-      )
-        return reply(400, "INVALID_REQUEST");
-      const args = {
-        p_key: b.idempotency_key,
-        p_owner: owner,
-        p_payload: b.payload,
-      };
-      const replay = await rpc("demo_order_replay", args);
-      if (replay.error) {
-        if (replay.error.message.includes("IDEMPOTENCY_EXPIRED"))
-          return reply(409, "EXPIRED");
-        if (replay.error.message.includes("IDEMPOTENCY_CONFLICT"))
-          return reply(409, "IDEMPOTENCY_CONFLICT");
+          p_payload: b.payload,
+        };
+        const replay = await callRpc("demo_order_replay", args);
+        if (replay.error) {
+          if (replay.error.message.includes("IDEMPOTENCY_EXPIRED"))
+            return reply(409, "EXPIRED");
+          if (replay.error.message.includes("IDEMPOTENCY_CONFLICT"))
+            return reply(409, "IDEMPOTENCY_CONFLICT");
+          return reply(503, "UNAVAILABLE");
+        }
+        if (replay.data) return reply(200, "", replay.data);
+        // A query must never become a creation attempt, even if a token is supplied.
+        if (b.action === "recover") return reply(200, "", { found: false });
+        if (!b.challenge.trim()) {
+          trace.record(
+            "siteverify",
+            "validation",
+            "rejected",
+            performance.now(),
+            undefined,
+            "missing_challenge",
+          );
+          return reply(403, "CHALLENGE_REQUIRED");
+        }
+        const verificationStarted = performance.now();
+        const verificationSignal = AbortSignal.timeout(8000);
+        let challengeResponse: Response;
+        try {
+          challengeResponse = await fetcher(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                secret: settings.challengeSecret,
+                response: b.challenge,
+              }),
+              signal: verificationSignal,
+            },
+          );
+        } catch (error) {
+          trace.record(
+            "siteverify",
+            "request",
+            isTimeout(error, verificationSignal) ? "timeout" : "network_error",
+            verificationStarted,
+          );
+          return reply(503, "CHALLENGE_UNAVAILABLE");
+        }
+        trace.record(
+          "siteverify",
+          "request",
+          challengeResponse.ok ? "ok" : "http_error",
+          verificationStarted,
+          challengeResponse.status,
+        );
+        if (!challengeResponse.ok) return reply(503, "CHALLENGE_UNAVAILABLE");
+        const bodyStarted = performance.now();
+        let challenge;
+        try {
+          challenge = await challengeResponse.json();
+        } catch (error) {
+          trace.record(
+            "siteverify",
+            "body",
+            isTimeout(error, verificationSignal)
+              ? "timeout"
+              : error instanceof SyntaxError
+                ? "invalid_json"
+                : "network_error",
+            bodyStarted,
+            challengeResponse.status,
+          );
+          return reply(503, "CHALLENGE_UNAVAILABLE");
+        }
+        if (
+          !challenge ||
+          typeof challenge !== "object" ||
+          Array.isArray(challenge) ||
+          typeof challenge.success !== "boolean"
+        ) {
+          trace.record(
+            "siteverify",
+            "body",
+            "invalid_response",
+            bodyStarted,
+            challengeResponse.status,
+          );
+          return reply(503, "CHALLENGE_UNAVAILABLE");
+        }
+        trace.record(
+          "siteverify",
+          "body",
+          "ok",
+          bodyStarted,
+          challengeResponse.status,
+        );
+        const validationStarted = performance.now();
+        if (challenge.success !== true) {
+          const codes = Array.isArray(challenge["error-codes"])
+            ? challenge["error-codes"]
+            : [];
+          const reason =
+            [
+              "invalid-input-secret",
+              "missing-input-secret",
+              "timeout-or-duplicate",
+              "internal-error",
+              "missing-input-response",
+              "invalid-input-response",
+              "bad-request",
+            ].find((code) => codes.includes(code)) ?? "other";
+          trace.record(
+            "siteverify",
+            "validation",
+            "rejected",
+            validationStarted,
+            undefined,
+            reason,
+          );
+          if (
+            codes.includes("invalid-input-secret") ||
+            codes.includes("missing-input-secret")
+          )
+            return reply(503, "CHALLENGE_CONFIG");
+          if (codes.includes("timeout-or-duplicate"))
+            return reply(403, "CHALLENGE_EXPIRED");
+          if (codes.includes("internal-error"))
+            return reply(503, "CHALLENGE_UNAVAILABLE");
+          return reply(403, "CHALLENGE_REJECTED");
+        }
+        if (
+          challenge.hostname !== settings.challengeHostname ||
+          challenge.action !== "demo-order"
+        ) {
+          trace.record(
+            "siteverify",
+            "validation",
+            "rejected",
+            validationStarted,
+            undefined,
+            challenge.hostname !== settings.challengeHostname
+              ? "hostname_mismatch"
+              : "action_mismatch",
+          );
+          return reply(403, "CHALLENGE_CONTEXT");
+        }
+        trace.record("siteverify", "validation", "ok", validationStarted);
+        const admission = await callRpc("demo_admit_creation", {});
+        if (admission.error) return reply(503, "UNAVAILABLE");
+        if (admission.data !== true) return reply(429, "RATE_LIMITED");
+        const result = await callRpc("demo_create_order", args);
+        if (result.error) {
+          const code = [
+            "INSUFFICIENT_STOCK",
+            "PRODUCT_UNAVAILABLE",
+            "PRICE_CHANGED",
+            "IDEMPOTENCY_CONFLICT",
+            "DEMO_CAPACITY",
+            "INVALID_REQUEST",
+          ].find((c) => result.error!.message.includes(c));
+          return reply(
+            code === "INVALID_REQUEST" ? 400 : code ? 409 : 503,
+            code ?? "UNAVAILABLE",
+          );
+        }
+        return reply(200, "", result.data);
+      } catch (error) {
+        if (!(error instanceof DependencyError))
+          trace.record("request", "body", "unexpected_error", started);
         return reply(503, "UNAVAILABLE");
       }
-      if (replay.data) return reply(200, "", replay.data);
-      // A query must never become a creation attempt, even if a token is supplied.
-      if (b.action === "recover") return reply(200, "", { found: false });
-      if (!b.challenge.trim()) return reply(403, "CHALLENGE_REQUIRED");
-      let challengeResponse: Response;
-      try {
-        challengeResponse = await fetcher(
-          "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-          {
-            method: "POST",
-            body: new URLSearchParams({
-              secret: settings.challengeSecret,
-              response: b.challenge,
-            }),
-            signal: AbortSignal.timeout(8000),
-          },
-        );
-      } catch {
-        return reply(503, "CHALLENGE_UNAVAILABLE");
-      }
-      if (!challengeResponse.ok) return reply(503, "CHALLENGE_UNAVAILABLE");
-      let challenge;
-      try {
-        challenge = await challengeResponse.json();
-      } catch {
-        return reply(503, "CHALLENGE_UNAVAILABLE");
-      }
-      if (!challenge || typeof challenge !== "object")
-        return reply(503, "CHALLENGE_UNAVAILABLE");
-      if (challenge.success !== true) {
-        const codes = Array.isArray(challenge["error-codes"])
-          ? challenge["error-codes"]
-          : [];
-        if (
-          codes.includes("invalid-input-secret") ||
-          codes.includes("missing-input-secret")
-        )
-          return reply(503, "CHALLENGE_CONFIG");
-        if (codes.includes("timeout-or-duplicate"))
-          return reply(403, "CHALLENGE_EXPIRED");
-        if (codes.includes("internal-error"))
-          return reply(503, "CHALLENGE_UNAVAILABLE");
-        return reply(403, "CHALLENGE_REJECTED");
-      }
-      if (
-        challenge.hostname !== settings.challengeHostname ||
-        challenge.action !== "demo-order"
-      )
-        return reply(403, "CHALLENGE_CONTEXT");
-      const admission = await rpc("demo_admit_creation", {});
-      if (admission.error) return reply(503, "UNAVAILABLE");
-      if (admission.data !== true) return reply(429, "RATE_LIMITED");
-      const result = await rpc("demo_create_order", args);
-      if (result.error) {
-        const code = [
-          "INSUFFICIENT_STOCK",
-          "PRODUCT_UNAVAILABLE",
-          "PRICE_CHANGED",
-          "IDEMPOTENCY_CONFLICT",
-          "DEMO_CAPACITY",
-          "INVALID_REQUEST",
-        ].find((c) => result.error!.message.includes(c));
-        return reply(
-          code === "INVALID_REQUEST" ? 400 : code ? 409 : 503,
-          code ?? "UNAVAILABLE",
-        );
-      }
-      return reply(200, "", result.data);
+    };
+    try {
+      return await run();
     } catch {
+      trace.record("request", "validation", "unexpected_error", started);
       return reply(503, "UNAVAILABLE");
+    } finally {
+      if (request.method === "POST") trace.finish(responseStatus);
     }
   };
 }
