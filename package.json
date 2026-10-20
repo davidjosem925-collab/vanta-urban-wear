@@ -23,7 +23,8 @@
     "images:check": "node --experimental-strip-types scripts/prepare-catalog-images.mjs --check",
     "test:orders:postgres": "node scripts/test-orders-postgres.mjs",
     "typecheck:edge": "tsc --project supabase/functions/tsconfig.json",
-    "test:e2e:orders": "playwright test --config playwright.orders.config.ts"
+    "test:e2e:orders": "playwright test --config playwright.orders.config.ts",
+    "test:admin:auth": "node scripts/test-admin-auth.mjs"
   },
   "dependencies": {
     "react": "^19.1.0",

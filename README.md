@@ -145,3 +145,11 @@ actual y no se vacía al finalizar. [Flujo, límites y prueba local](docs/stage-
 
 Pedidos demo, reservas de 60 minutos y endpoint protegido; desactivado por defecto.
 [Arquitectura, pruebas y pasos de aprobación manual](docs/stage-5-orders-stock.md).
+
+### Etapa 6 — Panel administrativo
+
+Acceso privado en `/#/admin`, con Supabase Auth, MFA obligatorio, catálogo,
+galería privada, variantes, ajustes de inventario auditados y pedidos demo de
+solo lectura. El checkout sigue sin pagos reales.
+[Activación manual, migración incremental y pruebas](docs/stage-6-admin.md).
+No aplicar de nuevo las migraciones anteriores ni publicar automáticamente.
