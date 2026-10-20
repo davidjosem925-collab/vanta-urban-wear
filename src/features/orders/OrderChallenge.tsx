@@ -46,7 +46,8 @@ export function OrderChallenge({
             sitekey: siteKey,
             action: "demo-order",
             theme: "dark",
-            size: "flexible",
+            // Compact is 150px wide; the normal/flexible widget has a 300px minimum.
+            size: "compact",
             callback: (token: string) => onToken(token),
             "expired-callback": () => onToken(""),
             "error-callback": () => {

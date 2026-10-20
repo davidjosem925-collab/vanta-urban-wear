@@ -150,7 +150,7 @@ no permite recuperar un pedido cuya información ya se limpió.
 
 - Turnstile es obligatorio para **crear**: verificación server-side, `success=true`,
   hostname esperado y action `demo-order`, con timeout y cierre seguro al fallar.
-  El widget solo carga en revisión cuando se habilita la etapa. Tokens de uso único
+  El widget compacto (150px de ancho) evita el mínimo de 300px de los modos normal/flexible y solo carga en revisión cuando se habilita la etapa. Tokens de uso único
   y expiración los valida el proveedor. Recuperar un intento propio no necesita
   reutilizar el token consumido.
 - Límite SQL durable: 6 peticiones/hora por bucket de solicitante y 60 creaciones/hora globales.

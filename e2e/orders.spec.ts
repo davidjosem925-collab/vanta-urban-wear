@@ -20,7 +20,7 @@ async function begin(page: Page) {
     (route) =>
       route.fulfill({
         contentType: "application/javascript",
-        body: `window.turnstile={render:(el,o)=>{el.textContent='Verificación de seguridad';o.callback('test-token');return 'fixture';},remove:()=>{}};`,
+        body: `window.turnstile={render:(el,o)=>{if(o.size!=='compact')throw Error('Widget demasiado ancho');el.style.width='150px';el.textContent='Verificación de seguridad';o.callback('test-token');return 'fixture';},remove:()=>{}};`,
       }),
   );
   await page.goto("/#/producto/remera-essential");
@@ -37,6 +37,9 @@ async function begin(page: Page) {
   await page
     .getByRole("button", { name: "Continuar al checkout demo" })
     .click();
+  await expect(
+    page.getByText(/Stock por confirmar. La disponibilidad y la reserva demo/),
+  ).toBeVisible();
   for (const [name, value] of [
     ["Nombre", "Lucía"],
     ["Apellido", "Pérez"],
@@ -78,7 +81,8 @@ test("pedido auténticamente confirmado, carga, privacidad y vaciado solo tras r
     await gate;
     await route.fulfill({ json: result });
   });
-  await page.getByRole("button", { name: "Confirmar pedido demo" }).click();
+  await page.getByRole("button", { name: "Confirmar pedido demo" }).focus();
+  await page.keyboard.press("Enter");
   await expect(
     page.getByRole("button", { name: "Confirmando…" }),
   ).toBeDisabled();
@@ -94,6 +98,7 @@ test("pedido auténticamente confirmado, carga, privacidad y vaciado solo tras r
     page.getByRole("heading", { name: "Pedido demo registrado." }),
   ).toBeVisible();
   await expect(page.getByText(result.reference, { exact: true })).toBeVisible();
+  await expect(page.locator("#contenido")).toBeFocused();
   await expect
     .poll(() =>
       page.evaluate(

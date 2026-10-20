@@ -582,7 +582,7 @@ export function CheckoutPage({
                 </div>
               ) : null}
             </div>
-            <CheckoutSummary draft={draft} />
+            <CheckoutSummary draft={draft} reservesOnConfirm={orders.enabled} />
           </div>
           {step === "review" && orders.enabled && valid && (
             <div className="checkout-demo-note">
