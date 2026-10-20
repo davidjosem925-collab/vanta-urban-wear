@@ -44,7 +44,7 @@ la migración a una versión mayor, conservar Vite y las herramientas restantes 
 validar la compatibilidad con las pruebas actuales. No se usó `npm audit fix --force`,
 no se forzaron dependencias transitivas mediante overrides y no se ignoraron avisos.
 
-No fue necesario cambiar las expectativas de pruebas ni la configuración de Vitest:
+No fue necesario cambiar las expectativas de Vitest ni su configuración:
 se conservan jsdom, el setup/cleanup explícito, las pruebas SQL locales en Node y
 la suite de navegador existente. CI ahora ejecuta además `npm audit` completo como
 comprobación obligatoria, sin filtrar severidades ni excluir desarrollo.
@@ -77,8 +77,11 @@ Resultados de esta revisión:
 
 En el entorno local limitado a dos CPU, una primera ejecución simultánea de Vitest
 y Playwright produjo fallos de tiempo/foco. No se reprodujeron al ejecutar la suite
-de navegador completa por separado; no se cambiaron límites ni expectativas. CI
-ejecuta ambas suites secuencialmente en su trabajo de comprobaciones.
+de navegador completa por separado. En el Chromium de CI se detectó además que
+la prueba de posición a 320 px medía antes del scroll automático al enfocar un
+control. Se establece la referencia después de enfocarlo y se conserva el límite
+de 1 px, con diagnóstico del scroll si falla; no se cambia el carrito ni sus estilos.
+CI ejecuta ambas suites secuencialmente en su trabajo de comprobaciones.
 
 No quedan vulnerabilidades residuales conocidas por la base de npm audit en esta
 fecha. Este resultado depende de esa base y del lockfile auditado; no constituye
