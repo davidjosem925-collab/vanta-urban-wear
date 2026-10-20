@@ -147,11 +147,20 @@ test("responsive: selección, variantes, cantidades, persistencia y vaciado", as
   await expect(dialog.getByRole("listitem")).toHaveCount(2);
   await expect(dialog.getByText("3 unidades")).toBeVisible();
   const qty = dialog.getByRole("group", { name: /Negro, M/ });
+  const increase = qty.getByRole("button", { name: /^Aumentar/ });
+  // Focus can scroll this control into view on short mobile viewports. Establish
+  // the layout baseline after that browser action, not before click auto-scroll.
+  await increase.scrollIntoViewIfNeeded();
+  await increase.focus();
   const beforeChange = await qty.boundingBox();
-  await qty.getByRole("button", { name: /^Aumentar/ }).click();
+  const scrollBeforeChange = await dialog.locator(".cart-scroll").evaluate((el) => el.scrollTop);
+  await increase.click();
   await expect(dialog.getByText("4 unidades")).toBeVisible();
+  const afterChange = await qty.boundingBox();
+  const scrollAfterChange = await dialog.locator(".cart-scroll").evaluate((el) => el.scrollTop);
   expect(
-    Math.abs((await qty.boundingBox())!.y - beforeChange!.y),
+    Math.abs(afterChange!.y - beforeChange!.y),
+    `Position before/after: ${JSON.stringify({ beforeChange, afterChange, scrollBeforeChange, scrollAfterChange })}`,
   ).toBeLessThanOrEqual(1);
   await qty.getByRole("button", { name: /^Disminuir/ }).click();
   await expect(dialog.getByText("3 unidades")).toBeVisible();
