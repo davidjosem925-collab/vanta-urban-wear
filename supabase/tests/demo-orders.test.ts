@@ -205,11 +205,28 @@ it("expiry releases once, even if cancellation follows; no early expiry", async 
   expect(
     (
       await db.query(
-        "select reserved from public.inventory where variant_id=$1",
+        "select reserved,on_hand,on_hand-reserved as available from public.inventory where variant_id=$1",
         [a],
       )
-    ).rows[0].reserved,
-  ).toBe(0);
+    ).rows[0],
+  ).toEqual({ reserved: 0, on_hand: 8, available: 8 });
+  expect(
+    (await db.query("select status from public.stock_reservations")).rows,
+  ).toEqual([{ status: "expired" }]);
+  expect(
+    (
+      await db.query(
+        "select kind,quantity from public.inventory_movements where kind<>'reserve'",
+      )
+    ).rows,
+  ).toEqual([{ kind: "expire", quantity: 2 }]);
+  expect(
+    (
+      await db.query(
+        "select reservation_resolved_at is not null as resolved from public.orders",
+      )
+    ).rows[0].resolved,
+  ).toBe(true);
 });
 it("admin transitions consume once, disallow refund/indefinite pending reservation", async () => {
   const r = await create();

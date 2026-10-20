@@ -175,6 +175,106 @@ try {
   assert.equal(results[0].value, results[1].value);
   assert.equal(await sql("select count(*) from public.orders"), "1");
   console.log("PASS concurrent same-key retries reserve once");
+
+  // Only this disposable database is time-shifted; no remote DSN is accepted.
+  await reset();
+  await sql(`update public.inventory set on_hand=2 where variant_id='${a}';`);
+  const expiryKey = randomUUID();
+  const expiring = JSON.parse(await create(expiryKey));
+  const stillPending = JSON.parse(await create());
+  assert.equal(
+    await sql(
+      "select bool_and(reservation_expires_at-created_at=interval '60 minutes') from public.orders",
+    ),
+    "t",
+  );
+  assert.equal(
+    await sql("select public.demo_expire_orders();"),
+    "0",
+    "no early expiry",
+  );
+  assert.equal(
+    await sql(
+      `select on_hand||':'||reserved||':'||(on_hand-reserved) from public.inventory where variant_id='${a}'`,
+    ),
+    "2:2:0",
+  );
+  await sql(`
+    update public.orders set created_at=created_at-interval '61 minutes',
+      reservation_expires_at=reservation_expires_at-interval '61 minutes'
+      where public_reference='${expiring.reference}';
+    update public.stock_reservations r set created_at=o.created_at,expires_at=o.reservation_expires_at
+      from public.orders o where o.id=r.order_id and o.public_reference='${expiring.reference}';
+  `);
+  const expiryRuns = await Promise.all([
+    sql("select public.demo_expire_orders();"),
+    sql("select public.demo_expire_orders();"),
+  ]);
+  assert.equal(
+    expiryRuns.reduce((sum, n) => sum + Number(n), 0),
+    1,
+  );
+  assert.equal(
+    await sql(
+      `select status||':'||(reservation_resolved_at is not null) from public.orders where public_reference='${expiring.reference}'`,
+    ),
+    "expired:true",
+  );
+  assert.equal(
+    await sql(
+      `select status||':'||(reservation_resolved_at is null) from public.orders where public_reference='${stillPending.reference}'`,
+    ),
+    "pending:true",
+  );
+  assert.equal(
+    await sql(
+      `select on_hand||':'||reserved||':'||(on_hand-reserved) from public.inventory where variant_id='${a}'`,
+    ),
+    "2:1:1",
+  );
+  assert.equal(
+    await sql(
+      `select r.status from public.stock_reservations r join public.orders o on o.id=r.order_id where o.public_reference='${expiring.reference}'`,
+    ),
+    "expired",
+  );
+  assert.equal(
+    await sql(
+      `select r.status from public.stock_reservations r join public.orders o on o.id=r.order_id where o.public_reference='${stillPending.reference}'`,
+    ),
+    "active",
+  );
+  assert.equal(
+    await sql(
+      "select count(*)||':'||sum(quantity) from public.inventory_movements where kind='expire'",
+    ),
+    "1:1",
+  );
+  assert.equal(
+    await sql(
+      "select count(*) from public.inventory_movements where kind='consume'",
+    ),
+    "0",
+  );
+  assert.equal(await sql("select public.demo_expire_orders();"), "0");
+  const expiredReplay = JSON.parse(await create(expiryKey));
+  assert.equal(expiredReplay.reference, expiring.reference);
+  assert.equal(expiredReplay.status, "expired");
+  assert.equal(await sql("select count(*) from public.orders"), "2");
+  assert.equal(
+    await sql(`select reserved from public.inventory where variant_id='${a}'`),
+    "1",
+  );
+  await create(randomUUID(), "b".repeat(64));
+  assert.equal(
+    await sql(
+      `select on_hand||':'||reserved from public.inventory where variant_id='${a}'`,
+    ),
+    "2:2",
+  );
+  console.log(
+    "PASS isolated cron expiry: exact 60m, no early expiry, pending -> expired, one release under concurrent jobs, live order preserved, expired replay and released unit reusable",
+  );
   await reset();
   const receipt = JSON.parse(await create());
   await sql(
