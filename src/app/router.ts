@@ -4,12 +4,18 @@ export type Route =
   | { kind: "catalog" }
   | { kind: "category"; slug: string }
   | { kind: "product"; slug: string }
+  | { kind: "checkout"; step: "details" | "review" | "complete" }
   | { kind: "missing" };
 export function parseRoute(hash: string): Route {
   try {
     const path = hash.replace(/^#/, "") || "/";
     if (path === "/") return { kind: "home" };
     if (path === "/catalogo") return { kind: "catalog" };
+    if (path === "/checkout") return { kind: "checkout", step: "details" };
+    if (path === "/checkout/revision")
+      return { kind: "checkout", step: "review" };
+    if (path === "/checkout/finalizado")
+      return { kind: "checkout", step: "complete" };
     const match = path.match(/^\/(categoria|producto)\/([^/]+)$/);
     if (!match) return { kind: "missing" };
     const slug = decodeURIComponent(match[2]);

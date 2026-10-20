@@ -128,8 +128,15 @@ de medición y cierre accesible. Los precios omiten `,00` cuando no hay centavos
 significativos y conservan las fracciones reales.
 
 No crea pedidos, reservas ni pagos y no requiere migraciones ni cargas remotas.
-La continuación de compra permanece deshabilitada. Límites: 10 unidades por
+La etapa 4 habilita únicamente el checkout de demostración. Límites: 10 unidades por
 variante y 30 variantes por carrito, sin representar disponibilidad real.
 
 Arquitectura, prueba local, validación y pendientes en
 [docs/stage-3-cart.md](docs/stage-3-cart.md).
+
+## VANTA — Etapa 4
+
+Checkout de demostración desde el carrito, con contacto, envío a coordinar o retiro
+ficticio, tres métodos simulados, revisión y finalización sin cobros ni pedidos.
+Los datos del comprador quedan solo en memoria; el carrito conserva su persistencia
+actual y no se vacía al finalizar. [Flujo, límites y prueba local](docs/stage-4-checkout.md).

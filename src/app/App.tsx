@@ -1,5 +1,5 @@
 import { ArrowIcon } from "../components/ArrowIcon";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { CatalogPage } from "../features/catalog/CatalogPage";
 import { ProductPage } from "../features/catalog/ProductPage";
 import { categoryHref, menuCategories } from "../features/catalog/model";
@@ -12,6 +12,12 @@ import { useRoute } from "./router";
 import { CartProvider } from "../features/cart/CartProvider";
 import { CartDrawer, CartTrigger } from "../features/cart/CartDrawer";
 import { CartFeedback } from "../features/cart/CartFeedback";
+import { initialDraft } from "../features/checkout/model";
+const CheckoutPage = lazy(() =>
+  import("../features/checkout/CheckoutPage").then((module) => ({
+    default: module.CheckoutPage,
+  })),
+);
 
 function Home({ service }: { service: CatalogService }) {
   return (
@@ -135,15 +141,27 @@ export function App({
 function AppShell({ service }: { service: CatalogService }) {
   const { route, routeKey } = useRoute();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Draft lives outside keyed route content, only in memory. No extra provider.
+  const [checkoutDraft, setCheckoutDraft] = useState(() => ({
+    ...initialDraft,
+  }));
+  const [checkoutCompleted, setCheckoutCompleted] = useState(false);
+  const checkoutStep = route.kind === "checkout" ? route.step : null;
+  useEffect(() => {
+    if (checkoutStep && checkoutStep !== "complete")
+      setCheckoutCompleted(false);
+  }, [checkoutStep]);
   const pageTitle =
-    route.kind === "product"
-      ? "Producto"
-      : route.kind === "category"
-        ? (menuCategories.find((c) => c.slug === route.slug)?.name ??
-          "Colección")
-        : route.kind === "catalog"
-          ? "Colección"
-          : "Urban Wear";
+    route.kind === "checkout"
+      ? "Checkout demo"
+      : route.kind === "product"
+        ? "Producto"
+        : route.kind === "category"
+          ? (menuCategories.find((c) => c.slug === route.slug)?.name ??
+            "Colección")
+          : route.kind === "catalog"
+            ? "Colección"
+            : "Urban Wear";
   useEffect(() => {
     document.title = `VANTA — ${pageTitle}`;
   }, [pageTitle]);
@@ -243,6 +261,23 @@ function AppShell({ service }: { service: CatalogService }) {
         {route.kind === "product" && (
           <ProductPage slug={route.slug} service={service} />
         )}
+        {route.kind === "checkout" && (
+          <Suspense
+            fallback={
+              <p className="section-shell" role="status">
+                Preparando checkout demo…
+              </p>
+            }
+          >
+            <CheckoutPage
+              step={route.step}
+              draft={checkoutDraft}
+              setDraft={setCheckoutDraft}
+              completed={checkoutCompleted}
+              onComplete={() => setCheckoutCompleted(true)}
+            />
+          </Suspense>
+        )}
         {route.kind === "missing" && (
           <div className="section-shell">
             <Feedback
@@ -315,7 +350,7 @@ function AppShell({ service }: { service: CatalogService }) {
         </div>
       </footer>
       <CartDrawer />
-      <CartFeedback />
+      <CartFeedback suspendFloating={route.kind === "checkout"} />
     </>
   );
 }

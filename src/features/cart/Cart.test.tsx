@@ -80,7 +80,7 @@ describe("Carrito integrado", () => {
       within(panel).getByText("Todavía no agregaste prendas a tu carrito."),
     ).toBeVisible();
     expect(
-      within(panel).getByRole("button", { name: /Continuar compra/ }),
+      within(panel).getByRole("button", { name: /Continuar al checkout demo/ }),
     ).toBeDisabled();
     expect(
       within(panel).getByRole("link", { name: "Explorar la colección" }),
