@@ -15,7 +15,13 @@ function isMobile() {
 }
 
 /** Only disclosure state lives here. Products, quantities and amounts stay in CartProvider. */
-export function CheckoutSummary({ draft }: { draft: CheckoutDraft }) {
+export function CheckoutSummary({
+  draft,
+  reservesOnConfirm = false,
+}: {
+  draft: CheckoutDraft;
+  reservesOnConfirm?: boolean;
+}) {
   const cart = useCart();
   const mobile = useSyncExternalStore(subscribe, isMobile, () => false);
   const [expanded, setExpanded] = useState(!mobile);
@@ -133,8 +139,9 @@ export function CheckoutSummary({ draft }: { draft: CheckoutDraft }) {
           : "Retiro en local ficticio sin costo."}
       </p>
       <p className="checkout-help">
-        Stock por confirmar. No se reserva inventario. El subtotal es
-        orientativo, no una cotización definitiva.
+        {reservesOnConfirm
+          ? "Stock por confirmar. La disponibilidad y la reserva demo se validan al confirmar el pedido. El subtotal es orientativo, no una cotización definitiva."
+          : "Stock por confirmar. No se reserva inventario. El subtotal es orientativo, no una cotización definitiva."}
       </p>
     </aside>
   );

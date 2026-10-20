@@ -4,7 +4,7 @@ import globals from "globals";
 import hooks from "eslint-plugin-react-hooks";
 import refresh from "eslint-plugin-react-refresh";
 export default tseslint.config(
-  { ignores: ["dist", "coverage", "work", "supabase/functions"] },
+  { ignores: ["dist", "coverage", "work"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { files: ["scripts/**/*.mjs"], languageOptions: { globals: globals.node } },

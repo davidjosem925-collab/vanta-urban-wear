@@ -46,7 +46,7 @@ export async function catalog(page: Page) {
   await page.route("**/*", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    if (url.origin === "http://127.0.0.1:4175") return route.continue();
+    if (["http://127.0.0.1:4175", "http://127.0.0.1:4176"].includes(url.origin)) return route.continue();
     if (url.hostname !== "vanta-cart-fixture.supabase.co") {
       state.unexpected.push(request.url());
       return route.abort();

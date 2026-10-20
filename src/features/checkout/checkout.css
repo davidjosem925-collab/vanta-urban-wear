@@ -423,3 +423,5 @@
     text-underline-offset: 4px;
   }
 }
+
+.checkout-challenge { margin-block: 16px; max-width: 100%; min-width: 0; }

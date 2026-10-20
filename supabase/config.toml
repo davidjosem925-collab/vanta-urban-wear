@@ -1,0 +1,6 @@
+project_id = "vanta-urban-wear"
+
+# Public guest endpoint; authentication is challenge + capability + server limits,
+# not a user session. All privileged RPCs remain service-only.
+[functions.demo-orders]
+verify_jwt = false
