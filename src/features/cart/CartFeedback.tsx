@@ -20,7 +20,11 @@ function Bag() {
     </svg>
   );
 }
-export function CartFeedback() {
+export function CartFeedback({
+  suspendFloating = false,
+}: {
+  suspendFloating?: boolean;
+}) {
   const cart = useCart();
   const modalOpen = useAnyModalOpen();
   const toast = useRef<HTMLElement>(null);
@@ -109,7 +113,7 @@ export function CartFeedback() {
           </button>
         </section>
       )}
-      {cart.units > 0 && (
+      {cart.units > 0 && !suspendFloating && (
         <>
           <div className="cart-mobile-space" aria-hidden="true" />
           <button

@@ -161,7 +161,10 @@ function CartItem({
 }
 export function CartDrawer() {
   const cart = useCart();
-  const { dialog, initialFocus: close } = useModalDialog(cart.open, ".cart-trigger");
+  const { dialog, initialFocus: close } = useModalDialog(
+    cart.open,
+    ".cart-trigger",
+  );
   const clearButton = useRef<HTMLButtonElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
   const restoreClearFocus = useRef(false);
@@ -311,12 +314,22 @@ export function CartDrawer() {
           Stock por confirmar. Los precios se consultan en el catálogo; no se
           reserva inventario.
         </p>
-        <button className="button primary" disabled>
-          Continuar compra — próximamente
+        <button
+          className="button primary"
+          disabled={
+            cart.entries.length === 0 ||
+            cart.total === null ||
+            cart.entries.some((e) => e.status !== "ready")
+          }
+          onClick={() => {
+            cart.closeCart();
+            window.location.hash = "/checkout";
+          }}
+        >
+          Continuar al checkout demo
         </button>
         <p className="cart-future muted small">
-          El carrito prepara tu selección. Las compras todavía no están
-          habilitadas.
+          Checkout de demostración. Sin cobros ni pedidos comerciales.
         </p>
       </footer>
     </dialog>
