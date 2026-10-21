@@ -20,6 +20,9 @@ import {
   type Receipt,
 } from "../features/orders/service";
 import { initialDraft } from "../features/checkout/model";
+const AdminPage = lazy(() =>
+  import("../features/admin/AdminPage").then((m) => ({ default: m.AdminPage })),
+);
 const CheckoutPage = lazy(() =>
   import("../features/checkout/CheckoutPage").then((module) => ({
     default: module.CheckoutPage,
@@ -188,16 +191,18 @@ function AppShell({
     }
   }, [checkoutStep]);
   const pageTitle =
-    route.kind === "checkout"
-      ? "Checkout demo"
-      : route.kind === "product"
-        ? "Producto"
-        : route.kind === "category"
-          ? (menuCategories.find((c) => c.slug === route.slug)?.name ??
-            "Colección")
-          : route.kind === "catalog"
-            ? "Colección"
-            : "Urban Wear";
+    route.kind === "admin"
+      ? "Administración"
+      : route.kind === "checkout"
+        ? "Checkout demo"
+        : route.kind === "product"
+          ? "Producto"
+          : route.kind === "category"
+            ? (menuCategories.find((c) => c.slug === route.slug)?.name ??
+              "Colección")
+            : route.kind === "catalog"
+              ? "Colección"
+              : "Urban Wear";
   useEffect(() => {
     document.title = `VANTA — ${pageTitle}`;
   }, [pageTitle]);
@@ -212,6 +217,27 @@ function AppShell({
     document.addEventListener("keydown", escape);
     return () => document.removeEventListener("keydown", escape);
   }, [menuOpen]);
+  if (route.kind === "admin")
+    return (
+      <>
+        <div className="admin-topbar">
+          <a href="#/">VANTA ®</a>
+          <span>ADMINISTRACIÓN PRIVADA</span>
+          <a href="#/catalogo">Ver tienda</a>
+        </div>
+        <main id="contenido" tabIndex={-1}>
+          <Suspense
+            fallback={
+              <p className="section-shell" role="status">
+                Preparando administración…
+              </p>
+            }
+          >
+            <AdminPage />
+          </Suspense>
+        </main>
+      </>
+    );
   return (
     <>
       <a

@@ -148,6 +148,12 @@ try {
     readFileSync("supabase/migrations/202610180001_initial_schema.sql", "utf8"),
   );
   await sql(
+    `create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text references storage.buckets(id),name text);alter table storage.objects enable row level security;grant usage on schema storage to anon,authenticated;grant select,insert,update,delete on storage.objects to anon,authenticated;`,
+  );
+  await sql(
+    readFileSync("supabase/migrations/202610180002_storage.sql", "utf8"),
+  );
+  await sql(
     readFileSync("supabase/migrations/202610200001_demo_orders.sql", "utf8"),
   );
   await sql(
@@ -469,6 +475,63 @@ try {
     );
   console.log(
     "PASS service_role RPC creation/cancellation with all direct write/trigger privileges revoked",
+  );
+  // Stage 6 compatibility: MFA hardens admin only, never guest/cron semantics.
+  await sql(
+    `create function auth.jwt() returns jsonb language sql stable as $$select jsonb_build_object('aal',current_setting('request.jwt.claim.aal',true))$$;`,
+  );
+  await sql(
+    readFileSync("supabase/migrations/202610200002_admin_panel.sql", "utf8"),
+  );
+  await reset();
+  await create();
+  await sql(
+    "update public.orders set created_at=created_at-interval '61 minutes',reservation_expires_at=reservation_expires_at-interval '61 minutes';",
+  );
+  const adjustmentKey = randomUUID();
+  const adjustSql = `set role authenticated;select set_config('request.jwt.claim.sub','${a}',false);select set_config('request.jwt.claim.aal','aal2',false);select public.demo_admin_adjust_inventory('${a}',1,'Local recount','${adjustmentKey}');`;
+  await Promise.all([
+    sql(adjustSql),
+    sql("select public.demo_expire_orders();"),
+  ]);
+  await sql(adjustSql);
+  assert.equal(
+    await sql(
+      `select on_hand||':'||reserved from public.inventory where variant_id='${a}'`,
+    ),
+    "2:0",
+  );
+  assert.equal(await sql("select status from public.orders"), "expired");
+  assert.equal(
+    await sql(
+      "select count(*) from public.inventory_movements where kind='adjust'",
+    ),
+    "1",
+  );
+  await assert.rejects(
+    sql(
+      `set role authenticated;select set_config('request.jwt.claim.sub','${a}',false);select set_config('request.jwt.claim.aal','aal1',false);select public.demo_admin_adjust_inventory('${a}',1,'No MFA','${randomUUID()}');`,
+    ),
+    /FORBIDDEN/,
+  );
+  const expected = await sql(
+    `select updated_at from public.products where id='${a}'`,
+  );
+  const saveProduct = (name) =>
+    sql(
+      `set role authenticated;select set_config('request.jwt.claim.sub','${a}',false);select set_config('request.jwt.claim.aal','aal2',false);select public.admin_save_product('${a}','${expected}','${JSON.stringify({ category_id: a, name, slug: "local", description: "Local only", price_cents: 2500050, active: true })}'::jsonb);`,
+    );
+  const edits = await Promise.allSettled([
+    saveProduct("Concurrent A"),
+    saveProduct("Concurrent B"),
+  ]);
+  assert.equal(edits.filter((r) => r.status === "fulfilled").length, 1);
+  assert.match(
+    edits.find((r) => r.status === "rejected").reason.message,
+    /EDIT_CONFLICT/,
+  );
+  console.log(
+    "PASS stage 6 MFA: guest/cron compatibility, concurrent adjustment vs expiry, adjustment retry once and optimistic catalog editing",
   );
 } finally {
   for (const tx of held) await tx.abort();

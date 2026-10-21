@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 export type Route =
+  | { kind: "admin" }
   | { kind: "home" }
   | { kind: "catalog" }
   | { kind: "category"; slug: string }
@@ -9,6 +10,7 @@ export type Route =
 export function parseRoute(hash: string): Route {
   try {
     const path = hash.replace(/^#/, "") || "/";
+    if (/^\/admin(?:\/|\?|$)/.test(path)) return { kind: "admin" };
     if (path === "/") return { kind: "home" };
     if (path === "/catalogo") return { kind: "catalog" };
     if (path === "/checkout") return { kind: "checkout", step: "details" };
