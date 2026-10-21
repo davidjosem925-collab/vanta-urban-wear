@@ -31,7 +31,11 @@ export default defineConfig({
     },
     {
       name: "mobile-393",
-      use: { viewport: { width: 393, height: 852 }, isMobile: true, hasTouch: true },
+      use: {
+        viewport: { width: 393, height: 852 },
+        isMobile: true,
+        hasTouch: true,
+      },
     },
     {
       name: "small-mobile",
@@ -50,6 +54,9 @@ export default defineConfig({
       // Browser fixtures only: all calls to this fake host are intercepted by Playwright.
       VITE_SUPABASE_URL: "https://vanta-cart-fixture.supabase.co",
       VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_browser_fixture_only",
+      VITE_ADMIN_PASSKEYS_ENABLED: "true",
+      VITE_ADMIN_DEVICE_MFA_ENABLED: "true",
+      VITE_ADMIN_RP_ID: "localhost",
     },
   },
 });

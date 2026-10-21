@@ -118,7 +118,7 @@ Abrir el enlace del correo en el mismo navegador donde se solicitó. El código 
 consume una vez, se retira de la URL y se exige acceso/MFA antes de cambiar clave.
 Un enlace caducado o de otro navegador requiere solicitar otro, no saltarse MFA.
 
-Abrir `/#/admin`, ingresar y pulsar Continuar con MFA. Si es la primera vez,
+Abrir `/#/admin`, ingresar y pulsar Usar código de respaldo. Si es la primera vez,
 escanear el QR con una aplicación autenticadora y verificar los seis dígitos.
 El QR/semilla es una credencial: no adjuntarlo a capturas, PR ni logs. Si ya existe
 factor verificado, solo se solicita su código. Se pueden renovar factores sin
@@ -188,3 +188,6 @@ se prueban con PostgreSQL y uploads con fixtures del navegador. No se enviaron
 correos ni se ejecutó ninguna operación administrativa contra Supabase remoto.
 
 El refinamiento de navegación y tareas del panel está documentado en [admin-ux.md](admin-ux.md). No requiere otra migración.
+
+La mejora posterior de acceso con dispositivos y recuperación se documenta en
+[admin-access.md](admin-access.md). No requiere SQL nuevo y mantiene AAL2.

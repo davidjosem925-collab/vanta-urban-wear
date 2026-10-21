@@ -4,6 +4,16 @@ import { adminClient as client, rpc } from "./client";
 import { AdminWorkspace } from "./Workspace";
 import "./admin.css";
 import { clearAdminPreviews } from "./previews";
+import { AccessDevices } from "./AccessDevices";
+import {
+  accessError,
+  deviceConfigurationValid,
+  deviceMfaEnabled,
+  deviceRpId,
+  deviceSupported,
+  passkeysEnabled,
+} from "./access";
+import { verifyDevice } from "./deviceVerification";
 export function AdminPage() {
   const [session, setSession] = useState<Session | null>(null),
     [state, setState] = useState<
@@ -15,6 +25,10 @@ export function AdminPage() {
     [factor, setFactor] = useState(""),
     [qr, setQr] = useState(""),
     [recovery, setRecovery] = useState(false);
+  const ceremony = useRef<AbortController | null>(null);
+  const [deviceFactors, setDeviceFactors] = useState<
+    { id: string; friendly_name?: string }[]
+  >([]);
   const generation = useRef(0);
   const authorizedUser = useRef<string | null>(null);
   const [authRevision, setAuthRevision] = useState(0);
@@ -55,9 +69,25 @@ export function AdminPage() {
       const { data, error: aalError } =
         await client.auth.mfa.getAuthenticatorAssuranceLevel();
       if (aalError) throw aalError;
+      if (data.currentLevel === "aal2" && !(await rpc<boolean>("is_admin", {})))
+        throw new Error("denied");
+      if (
+        sessionStorage.getItem("vanta.admin.recovery.v1") === s.session.user.id
+      )
+        setRecovery(true);
       if (id !== generation.current) return;
       authorizedUser.current =
         data.currentLevel === "aal2" ? s.session.user.id : null;
+      if (data.currentLevel !== "aal2" && deviceMfaEnabled) {
+        const factors = await client.auth.mfa.listFactors();
+        if (factors.error) throw factors.error;
+        if (id !== generation.current) return;
+        setDeviceFactors(
+          factors.data.all.filter(
+            (f) => f.factor_type === "webauthn" && f.status === "verified",
+          ),
+        );
+      }
       setState(data.currentLevel === "aal2" ? "ready" : "mfa");
     } catch {
       if (id !== generation.current) return;
@@ -76,6 +106,15 @@ export function AdminPage() {
     async function initial() {
       const url = initialCallback.current,
         code = url.searchParams.get("code");
+      if (
+        url.searchParams.get("admin_recovery") === "1" &&
+        (url.searchParams.has("error") || url.hash.includes("error="))
+      ) {
+        history.replaceState(null, "", `${url.pathname}#/admin`);
+        setError("El enlace venció o no es válido. Solicitá uno nuevo.");
+        setState("login");
+        return;
+      }
       if (code && url.searchParams.get("admin_recovery") === "1" && client) {
         history.replaceState(null, "", `${url.pathname}#/admin`);
         // Capture the SDK flow slot before removing credentials from the URL.
@@ -88,11 +127,15 @@ export function AdminPage() {
         if (!active) return;
         if (error) {
           setError(
-            "El enlace venció o no corresponde a esta pestaña. Solicitá uno nuevo.",
+            "El enlace venció o no corresponde a este navegador. Solicitá uno nuevo.",
           );
           setState("login");
           return;
         }
+        sessionStorage.setItem(
+          "vanta.admin.recovery.v1",
+          (await client.auth.getSession()).data.session?.user.id ?? "",
+        );
         setRecovery(true);
       }
       if (active) void inspect();
@@ -113,10 +156,14 @@ export function AdminPage() {
         setQr("");
         setFactor("");
       }
-      if (event === "PASSWORD_RECOVERY") setRecovery(true);
+      if (event === "PASSWORD_RECOVERY") {
+        sessionStorage.setItem("vanta.admin.recovery.v1", next?.user.id ?? "");
+        setRecovery(true);
+      }
       if (event === "SIGNED_OUT") {
         setState("login");
         setRecovery(false);
+        sessionStorage.removeItem("vanta.admin.recovery.v1");
         authorizedUser.current = null;
         clearAdminPreviews();
       } else if (!sameAuthorizedUser || event === "PASSWORD_RECOVERY")
@@ -129,6 +176,7 @@ export function AdminPage() {
     return () => {
       active = false;
       counter.current++;
+      ceremony.current?.abort();
       sub?.data.subscription.unsubscribe();
       window.removeEventListener("focus", focus);
     };
@@ -144,10 +192,8 @@ export function AdminPage() {
     setNotice("");
     try {
       await run();
-    } catch {
-      setError(
-        "No pudimos completar la autenticación. Revisá los datos o intentá más tarde.",
-      );
+    } catch (error) {
+      setError(accessError(error));
     } finally {
       setBusy(false);
     }
@@ -172,6 +218,7 @@ export function AdminPage() {
     setQr("");
     setFactor("");
     setRecovery(false);
+    sessionStorage.removeItem("vanta.admin.recovery.v1");
     setState("login");
   }
   async function setup() {
@@ -183,7 +230,9 @@ export function AdminPage() {
       setFactor(existing.id);
       return;
     }
-    for (const f of data.all.filter((f) => f.status === "unverified")) {
+    for (const f of data.all.filter(
+      (f) => f.status === "unverified" && f.factor_type === "totp",
+    )) {
       const { error } = await client.auth.mfa.unenroll({ factorId: f.id });
       if (error) throw error;
     }
@@ -255,6 +304,37 @@ export function AdminPage() {
               acceso.
             </p>
           )}
+          {passkeysEnabled && (
+            <>
+              <button
+                className="button secondary"
+                disabled={busy || !client}
+                onClick={() =>
+                  void action(async () => {
+                    if (!deviceSupported()) {
+                      setError(
+                        "Este navegador no admite el acceso con dispositivo. Usá tu correo y contraseña.",
+                      );
+                      return;
+                    }
+                    ceremony.current?.abort();
+                    ceremony.current = new AbortController();
+                    const r = await client!.auth.signInWithPasskey({
+                      options: { signal: ceremony.current.signal },
+                    });
+                    if (r.error) throw r.error;
+                    await inspect();
+                  })
+                }
+              >
+                Ingresar con huella, rostro o PIN
+              </button>
+              <p>
+                Si tu cuenta lo requiere, completá después la segunda
+                verificación con tu dispositivo o código de respaldo.
+              </p>
+            </>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -302,9 +382,10 @@ export function AdminPage() {
                 const redirect = new URL(location.pathname, location.origin);
                 redirect.searchParams.set("admin_recovery", "1");
                 redirect.hash = "/admin";
-                await client?.auth.resetPasswordForEmail(email, {
+                const result = await client!.auth.resetPasswordForEmail(email, {
                   redirectTo: redirect.toString(),
                 });
+                if (result.error) throw result.error;
                 setNotice(
                   "Si la cuenta puede recuperar el acceso, recibirá un enlace. Abrilo en este mismo navegador.",
                 );
@@ -332,16 +413,53 @@ export function AdminPage() {
         <div className="admin-card admin-auth">
           <h2>Verificación en dos pasos</h2>
           <p>
-            Usá una aplicación autenticadora. Si no tenés un factor, configurá
-            uno. Guardá su recuperación por un canal seguro.
+            Usá un dispositivo registrado o tu aplicación de respaldo. Si es tu
+            primer acceso, configurá la aplicación y conservá su recuperación
+            por un canal seguro.
           </p>
+          {deviceMfaEnabled &&
+            deviceFactors.map((d) => (
+              <button
+                key={d.id}
+                className="button primary"
+                disabled={busy}
+                onClick={() =>
+                  void action(async () => {
+                    if (!deviceSupported() || !deviceConfigurationValid()) {
+                      setError(
+                        "Este dispositivo o la configuración no son compatibles. Usá el código de respaldo.",
+                      );
+                      return;
+                    }
+                    ceremony.current?.abort();
+                    ceremony.current = new AbortController();
+                    const r = await verifyDevice(
+                      {
+                        factorId: d.id,
+                        webauthn: {
+                          rpId: deviceRpId,
+                          rpOrigins: [location.origin],
+                          signal: ceremony.current.signal,
+                        },
+                      },
+                      { userVerification: "required" },
+                    );
+                    if (r.error) throw r.error;
+                    await inspect();
+                  })
+                }
+              >
+                Verificar con huella, rostro o PIN ·{" "}
+                {d.friendly_name || "Dispositivo"}
+              </button>
+            ))}
           {!factor ? (
             <button
               className="button primary"
               disabled={busy}
               onClick={() => void action(setup)}
             >
-              Continuar con MFA
+              Usar código de respaldo
             </button>
           ) : (
             <>
@@ -385,7 +503,7 @@ export function AdminPage() {
                   />
                 </label>
                 <button className="button primary" disabled={busy}>
-                  Verificar MFA
+                  Verificar código
                 </button>
               </form>
             </>
@@ -407,8 +525,10 @@ export function AdminPage() {
               void action(async () => {
                 const { error } = await client!.auth.updateUser({ password });
                 if (error) throw error;
-                setRecovery(false);
-                setNotice("Contraseña actualizada.");
+                await logout();
+                setNotice(
+                  "Contraseña actualizada. Volvé a ingresar con tu nueva contraseña.",
+                );
               });
             }}
           >
@@ -441,7 +561,10 @@ export function AdminPage() {
         </div>
       )}
       {state === "ready" && !recovery && session && (
-        <AdminWorkspace userId={session.user.id} onUnauthorized={deny} />
+        <>
+          <AccessDevices onUnauthorized={deny} />
+          <AdminWorkspace userId={session.user.id} onUnauthorized={deny} />
+        </>
       )}
     </section>
   );

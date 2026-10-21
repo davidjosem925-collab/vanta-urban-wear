@@ -30,6 +30,7 @@ function configure() {
             autoRefreshToken: true,
             detectSessionInUrl: false,
             flowType: "pkce",
+            experimental: { passkey: true, appendPkceFlowIdToRedirects: true },
           },
         })
       : null;
@@ -49,7 +50,7 @@ export class AdminError extends Error {
 export function safeError(error: unknown): Error {
   const e = error as { code?: string; message?: string };
   if (e?.code === "42501" || e?.message?.includes("FORBIDDEN"))
-    return new AdminError("Acceso no autorizado. Verificá tu sesión y MFA.");
+    return new AdminError("Acceso no autorizado. Volvé a verificar tu acceso.");
   if (e?.code === "23505")
     return new AdminError(
       "Esa dirección, código interno o combinación ya existe. Revisá los datos.",
