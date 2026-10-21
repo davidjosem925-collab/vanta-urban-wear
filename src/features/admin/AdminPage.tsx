@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { adminClient as client, rpc } from "./client";
+import { adminClient as client, rpc, ADMIN_AUTH_STORAGE_KEY } from "./client";
 import { AdminWorkspace } from "./Workspace";
 import "./admin.css";
 import { clearAdminPreviews } from "./previews";
 import { AccessDevices } from "./AccessDevices";
 import {
   accessError,
+  isSessionError,
   deviceConfigurationValid,
   deviceMfaEnabled,
   deviceRpId,
@@ -17,7 +18,7 @@ import { verifyDevice } from "./deviceVerification";
 export function AdminPage() {
   const [session, setSession] = useState<Session | null>(null),
     [state, setState] = useState<
-      "loading" | "login" | "mfa" | "ready" | "denied"
+      "loading" | "login" | "mfa" | "ready" | "denied" | "retry"
     >("loading");
   const [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -29,6 +30,11 @@ export function AdminPage() {
   const [deviceFactors, setDeviceFactors] = useState<
     { id: string; friendly_name?: string }[]
   >([]);
+  const sessionIdentity = useRef<string | null>(null);
+  const [totpFactors, setTotpFactors] = useState<
+    { id: string; friendly_name?: string }[]
+  >([]);
+  const [canEnroll, setCanEnroll] = useState(false);
   const generation = useRef(0);
   const authorizedUser = useRef<string | null>(null);
   const [authRevision, setAuthRevision] = useState(0);
@@ -47,17 +53,53 @@ export function AdminPage() {
       return;
     }
     try {
-      const { data: s } = await client.auth.getSession();
+      const { data: s, error: sessionError } = await client.auth.getSession();
+      if (sessionError) throw sessionError;
       if (id !== generation.current) return;
       setSession(s.session);
       if (!s.session) {
+        if (sessionIdentity.current)
+          setError(
+            "Tu sesión terminó o venció. Volvé a ingresar; no hace falta cambiar tu contraseña.",
+          );
+        sessionIdentity.current = null;
+        setFactor("");
+        setQr("");
+        setDeviceFactors([]);
+        setTotpFactors([]);
+        setCanEnroll(false);
+        setRecovery(false);
+        sessionStorage.removeItem("vanta.admin.recovery.v1");
         authorizedUser.current = null;
         clearAdminPreviews();
         setState("login");
         return;
       }
-      const { error } = await client.auth.getUser();
+      const { data: userData, error } = await client.auth.getUser();
       if (error) throw error;
+      if (id !== generation.current) return;
+      if (!userData.user || userData.user.id !== s.session.user.id)
+        throw new Error("identity mismatch");
+      if (sessionIdentity.current !== userData.user.id) {
+        setFactor("");
+        setQr("");
+      }
+      sessionIdentity.current = userData.user.id;
+      const factors = userData.user.factors ?? [];
+      setTotpFactors(
+        factors.filter(
+          (f) => f.factor_type === "totp" && f.status === "verified",
+        ),
+      );
+      setDeviceFactors(
+        factors.filter(
+          (f) => f.factor_type === "webauthn" && f.status === "verified",
+        ),
+      );
+      setCanEnroll(!factors.some((f) => f.status === "verified"));
+      setFactor((current) =>
+        current && !factors.some((f) => f.id === current) ? "" : current,
+      );
       if (!(await rpc<boolean>("admin_membership", {}))) {
         if (id === generation.current) {
           authorizedUser.current = null;
@@ -78,25 +120,16 @@ export function AdminPage() {
       if (id !== generation.current) return;
       authorizedUser.current =
         data.currentLevel === "aal2" ? s.session.user.id : null;
-      if (data.currentLevel !== "aal2" && deviceMfaEnabled) {
-        const factors = await client.auth.mfa.listFactors();
-        if (factors.error) throw factors.error;
-        if (id !== generation.current) return;
-        setDeviceFactors(
-          factors.data.all.filter(
-            (f) => f.factor_type === "webauthn" && f.status === "verified",
-          ),
-        );
-      }
       setState(data.currentLevel === "aal2" ? "ready" : "mfa");
-    } catch {
+    } catch (error) {
       if (id !== generation.current) return;
       authorizedUser.current = null;
       clearAdminPreviews();
-      setSession(null);
-      setState("denied");
+      setState("retry");
       setError(
-        "No pudimos validar tu acceso. Cerrá la sesión y volvé a ingresar.",
+        isSessionError(error)
+          ? accessError(error)
+          : "No pudimos comprobar tu acceso con el servidor. Tu sesión local no se cerró. Revisá la conexión y volvé a comprobar el acceso.",
       );
     }
   }, []);
@@ -146,28 +179,29 @@ export function AdminPage() {
         setState("login");
       }
     });
-    const sub = client?.auth.onAuthStateChange((event, next) => {
+    const sub = client?.auth.onAuthStateChange(() => {
       if (!active) return;
       generation.current++;
       setAuthRevision((v) => v + 1);
-      setSession(next);
-      const sameAuthorizedUser = next?.user.id === authorizedUser.current;
-      if (!sameAuthorizedUser) {
-        setQr("");
-        setFactor("");
+      // Auth storage is tab-scoped; SDK notifications may originate in another
+      // tab. Never adopt its session, clear our factor or trust its AAL.
+      // inspect() re-reads this tab's session and validates it with the server.
+      let hidePrivateView = true;
+      // Untrusted identity is only a UI hint. It can hide a stale private view,
+      // never open one: inspect() still validates Auth, active membership and AAL.
+      // Foreign broadcasts never overwrite this tab's SDK storage.
+      try {
+        const raw = sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY);
+        const own = raw ? JSON.parse(raw) : null;
+        hidePrivateView = !own || own.user?.id !== sessionIdentity.current;
+      } catch {
+        /* A malformed/missing hint must hide private UI. */
       }
-      if (event === "PASSWORD_RECOVERY") {
-        sessionStorage.setItem("vanta.admin.recovery.v1", next?.user.id ?? "");
-        setRecovery(true);
-      }
-      if (event === "SIGNED_OUT") {
-        setState("login");
-        setRecovery(false);
-        sessionStorage.removeItem("vanta.admin.recovery.v1");
+      if (hidePrivateView) {
         authorizedUser.current = null;
         clearAdminPreviews();
-      } else if (!sameAuthorizedUser || event === "PASSWORD_RECOVERY")
         setState("loading");
+      }
     });
     const focus = () => {
       if (active) void inspect();
@@ -194,6 +228,7 @@ export function AdminPage() {
       await run();
     } catch (error) {
       setError(accessError(error));
+      if (isSessionError(error)) await inspect();
     } finally {
       setBusy(false);
     }
@@ -213,6 +248,7 @@ export function AdminPage() {
       return;
     authorizedUser.current = null;
     clearAdminPreviews();
+    sessionIdentity.current = null;
     await client?.auth.signOut({ scope: "local" });
     setSession(null);
     setQr("");
@@ -230,11 +266,19 @@ export function AdminPage() {
       setFactor(existing.id);
       return;
     }
-    for (const f of data.all.filter(
-      (f) => f.status === "unverified" && f.factor_type === "totp",
-    )) {
-      const { error } = await client.auth.mfa.unenroll({ factorId: f.id });
-      if (error) throw error;
+    setError(
+      "No hay una aplicación de códigos verificada disponible. Si perdiste tu segundo paso, pedile al propietario que recupere el acceso de forma segura.",
+    );
+  }
+  async function enrollBackup() {
+    if (!client || !canEnroll) return;
+    const current = await client.auth.mfa.listFactors();
+    if (current.error) throw current.error;
+    if (current.data.all.some((f) => f.status === "verified")) {
+      setError(
+        "Ya hay un método registrado. Actualizá los métodos y usá uno existente.",
+      );
+      return;
     }
     const enrolled = await client.auth.mfa.enroll({
       factorType: "totp",
@@ -281,6 +325,22 @@ export function AdminPage() {
         </p>
       )}
       {state === "loading" && <p role="status">Verificando acceso…</p>}
+      {state === "retry" && (
+        <div className="admin-card admin-auth">
+          <h2>Volver a comprobar el acceso</h2>
+          <p>
+            El panel permanece bloqueado hasta validar la sesión con el
+            servidor.
+          </p>
+          <button
+            className="button primary"
+            disabled={busy}
+            onClick={() => void action(inspect)}
+          >
+            Reintentar comprobación
+          </button>
+        </div>
+      )}
       {state === "denied" && (
         <div className="admin-card">
           <h2>Acceso no autorizado</h2>
@@ -419,13 +479,55 @@ export function AdminPage() {
             acceso, configurá esa aplicación y conservá su recuperación por un
             canal seguro.
           </p>
+          <div className="admin-method-status" role="status">
+            {!deviceMfaEnabled ? (
+              <p>
+                Huella, rostro o PIN: este método no está activado en esta
+                instalación. Necesita habilitarse en el servicio y después
+                registrar un dispositivo desde Seguridad del acceso. Mientras
+                tanto, usá tu aplicación de códigos.
+              </p>
+            ) : !deviceConfigurationValid() ? (
+              <p>
+                El acceso con dispositivo necesita completar la configuración
+                del sitio. Usá tu aplicación de códigos mientras se corrige.
+              </p>
+            ) : !deviceSupported() ? (
+              <p>
+                Este navegador no admite la verificación con dispositivo. Probá
+                un navegador compatible o usá tu aplicación de códigos.
+              </p>
+            ) : !deviceFactors.length ? (
+              <p>
+                Todavía no hay dispositivos registrados. Ingresá con tu
+                aplicación y registrá uno desde Seguridad del acceso, una vez
+                habilitado el servicio.
+              </p>
+            ) : (
+              <p>
+                Disponible: verificación con tu dispositivo registrado. También
+                podés usar tu aplicación de códigos.
+              </p>
+            )}
+          </div>
+          {canEnroll && (
+            <button
+              className="button secondary"
+              disabled={busy}
+              onClick={() => void action(enrollBackup)}
+            >
+              Configurar aplicación de respaldo
+            </button>
+          )}
           {deviceMfaEnabled &&
             deviceFactors.map((d) => (
               <div key={d.id} className="admin-device-option">
                 <button
                   aria-describedby={`admin-device-${d.id}`}
                   className="button primary"
-                  disabled={busy}
+                  disabled={
+                    busy || !deviceSupported() || !deviceConfigurationValid()
+                  }
                   onClick={() =>
                     void action(async () => {
                       if (!deviceSupported() || !deviceConfigurationValid()) {
@@ -461,7 +563,7 @@ export function AdminPage() {
             ))}
           {!factor ? (
             <button
-              className={`button ${deviceMfaEnabled && deviceFactors.length ? "secondary" : "primary"}`}
+              className={`button ${deviceMfaEnabled && deviceFactors.length && deviceSupported() && deviceConfigurationValid() ? "secondary" : "primary"}`}
               disabled={busy}
               onClick={() => void action(setup)}
             >
@@ -480,6 +582,23 @@ export function AdminPage() {
                   />
                 )}
               </div>
+              {totpFactors.length > 1 && (
+                <label>
+                  Aplicación de códigos
+                  <select
+                    aria-label="Aplicación de códigos"
+                    value={factor}
+                    onChange={(e) => setFactor(e.target.value)}
+                    disabled={busy}
+                  >
+                    {totpFactors.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.friendly_name || "Aplicación registrada"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -514,6 +633,17 @@ export function AdminPage() {
               </form>
             </>
           )}
+          <button
+            className="button secondary"
+            disabled={busy}
+            onClick={() =>
+              void action(async () => {
+                await inspect();
+              })
+            }
+          >
+            Actualizar métodos disponibles
+          </button>
         </div>
       )}
       {state === "ready" && recovery && (

@@ -238,3 +238,8 @@ un administrador real.
 La revisión posterior de compatibilidad alojada, prioridad del dispositivo y
 foco accesible se documenta en [admin-access-final-review.md](admin-access-final-review.md),
 con sus resultados separados de esta validación inicial.
+
+Para el problema reproducido de interrupciones al verificar el código, métodos
+no visibles y elección de autenticadores, consultar [admin-mfa-session-fix.md](admin-mfa-session-fix.md).
+Incluye pruebas de renovación/pestañas y los pasos específicos para computadora
+ y celular sin modificar la configuración remota automáticamente.

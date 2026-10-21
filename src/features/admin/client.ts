@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { readPublicSupabaseConfig } from "../../lib/supabase/config";
+export const ADMIN_AUTH_STORAGE_KEY = "vanta.admin.auth.v1";
 // Loaded only inside the admin chunk. Never shares auth storage with the storefront.
 function configure() {
   try {
@@ -7,7 +8,7 @@ function configure() {
     return c
       ? createClient(c.url, c.key, {
           auth: {
-            storageKey: "vanta.admin.auth.v1",
+            storageKey: ADMIN_AUTH_STORAGE_KEY,
             // Only PKCE verifier crosses tabs for email recovery. Sessions stay tab-scoped.
             storage: {
               getItem: (key: string) =>

@@ -33,3 +33,26 @@ describe("safe device authentication messages", () => {
     expect(deviceSupported()).toBe(false);
   });
 });
+
+it.each([
+  ["mfa_verification_failed", "El código no es válido"],
+  ["mfa_totp_verify_not_enabled", "no está habilitada"],
+  ["mfa_totp_enroll_not_enabled", "no está habilitada"],
+  ["mfa_factor_not_found", "Actualizá los métodos"],
+  ["mfa_challenge_expired", "verificación venció"],
+  ["mfa_ip_address_mismatch", "conexión cambió"],
+  ["session_not_found", "sesión venció"],
+  ["insufficient_aal", "segunda verificación"],
+])("maps %s without raw service details", (code, message) => {
+  expect(accessError({ code, message: "PRIVATE" })).toContain(message);
+  expect(accessError({ code, message: "PRIVATE" })).not.toContain("PRIVATE");
+});
+it("distinguishes rate limits, network and unknown HTTP rejection", () => {
+  expect(accessError({ status: 429 })).toContain("demasiados intentos");
+  expect(accessError({ name: "AuthRetryableFetchError", status: 0 })).toContain(
+    "conexión",
+  );
+  expect(accessError({ status: 403, message: "PRIVATE" })).toContain(
+    "HTTP 403",
+  );
+});

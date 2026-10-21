@@ -24,6 +24,7 @@ export async function fixture(
     empty = false,
     withPhoto = false,
     withDevice = false,
+    totpDevices = [{ id: "factor", friendly_name: "fixture" }],
   }: {
     member?: boolean;
     aal?: string;
@@ -31,6 +32,7 @@ export async function fixture(
     empty?: boolean;
     withPhoto?: boolean;
     withDevice?: boolean;
+    totpDevices?: { id: string; friendly_name: string }[];
   } = {},
 ) {
   const errors: string[] = [],
@@ -54,14 +56,11 @@ export async function fixture(
     app_metadata: {},
     user_metadata: {},
     created_at: "2026-10-20T00:00:00Z",
-    factors: [
-      {
-        id: "factor",
-        factor_type: "totp",
-        status: "verified",
-        friendly_name: "fixture",
-      },
-    ],
+    factors: totpDevices.map((f) => ({
+      ...f,
+      factor_type: "totp",
+      status: "verified",
+    })),
   };
   if (withDevice)
     user.factors.push({
