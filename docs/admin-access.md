@@ -203,7 +203,7 @@ El correo/PKCE es independiente y puede mantenerse. No revertir migraciones de
 seguridad ni rebajar `is_admin()`. El riesgo experimental se limita con activación
 separada, respaldo y pruebas reales del servicio antes de habilitarlo a usuarios.
 
-## Resultados ejecutados en esta rama
+## Resultados de la implementación inicial (eb0371f)
 
 - `npm run check`: lint, TypeScript Edge, **364 pruebas / 34 archivos**
   (frontend, handler, SQL/PGlite y seguridad) y TypeScript frontend/build aprobados.
@@ -234,3 +234,7 @@ Playwright configura automáticamente el proyecto simulado y las opciones de
 interfaz. Para la integración criptográfica, usar el comando de contenedores
 locales descrito arriba. Ninguna prueba automatizada necesita credenciales de
 un administrador real.
+
+La revisión posterior de compatibilidad alojada, prioridad del dispositivo y
+foco accesible se documenta en [admin-access-final-review.md](admin-access-final-review.md),
+con sus resultados separados de esta validación inicial.

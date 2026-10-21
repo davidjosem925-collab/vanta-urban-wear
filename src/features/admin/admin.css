@@ -1245,3 +1245,20 @@
   width: 100%;
   white-space: normal;
 }
+
+/* Headings receive focus for announcements, not an interactive focus ring. */
+.admin-shell h2[data-admin-focus-title="true"]:focus {
+  outline: none;
+}
+.admin-device-option {
+  margin-block: 16px;
+}
+.admin-device-option .button {
+  width: 100%;
+  white-space: normal;
+}
+.admin-device-option p {
+  margin-top: 8px;
+  color: #bdbdbd;
+  font-size: 0.875rem;
+}

@@ -73,7 +73,12 @@ test("access: register native credentials, passkey login remains gated, device s
     .getByLabel("Contraseña", { exact: true })
     .fill("Local-Fixture-Only-123!");
   await page.getByRole("button", { name: "Ingresar", exact: true }).click();
-  await page.getByRole("button", { name: /Verificar con huella/ }).click();
+  await page
+    .getByRole("button", {
+      name: "Ingresar con huella, rostro o PIN",
+      exact: true,
+    })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Productos", exact: true }),
   ).toBeVisible();
@@ -251,7 +256,12 @@ test("access: device verification cancellation preserves backup without unlockin
       throw new DOMException("local cancellation", "NotAllowedError");
     };
   });
-  await page.getByRole("button", { name: /Verificar con huella/ }).click();
+  await page
+    .getByRole("button", {
+      name: "Ingresar con huella, rostro o PIN",
+      exact: true,
+    })
+    .click();
   await expect(page.getByRole("alert")).toContainText("canceló");
   await expect(
     page.getByRole("button", { name: "Usar código de respaldo" }),
@@ -261,4 +271,35 @@ test("access: device verification cancellation preserves backup without unlockin
   ).toHaveCount(0);
   expect(state.writes).toEqual([]);
   await noOverflow(page);
+});
+
+test("access: device is primary, heading announced without border, keyboard focus remains visible", async ({
+  page,
+}) => {
+  const state = await fixture(page, { aal: "aal1", withDevice: true });
+  const title = page.getByRole("heading", {
+    name: "Verificación en dos pasos",
+  });
+  await expect(title).toBeFocused();
+  await expect(title).toHaveCSS("outline-style", "none");
+  const device = page.getByRole("button", {
+    name: "Ingresar con huella, rostro o PIN",
+    exact: true,
+  });
+  await expect(device).toHaveClass(/primary/);
+  await expect(device).toHaveAccessibleDescription("Mi dispositivo");
+  await expect(
+    page.getByRole("button", { name: "Usar código de respaldo" }),
+  ).toHaveClass(/secondary/);
+  await page.keyboard.press("Tab");
+  await expect(device).toBeFocused();
+  await expect(device).toHaveCSS("outline-style", "solid");
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "Usar código de respaldo" }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Código de seis dígitos")).toBeVisible();
+  await noOverflow(page);
+  expect(state.errors).toEqual([]);
 });

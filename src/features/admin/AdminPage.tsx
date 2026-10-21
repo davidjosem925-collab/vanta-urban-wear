@@ -248,6 +248,7 @@ export function AdminPage() {
     const h = document.querySelector<HTMLElement>(".admin-shell h2");
     if (h) {
       h.tabIndex = -1;
+      h.dataset.adminFocusTitle = "true";
       h.focus({ preventScroll: true });
     }
   }, [state]);
@@ -307,7 +308,7 @@ export function AdminPage() {
           {passkeysEnabled && (
             <>
               <button
-                className="button secondary"
+                className="button primary"
                 disabled={busy || !client}
                 onClick={() =>
                   void action(async () => {
@@ -413,49 +414,54 @@ export function AdminPage() {
         <div className="admin-card admin-auth">
           <h2>Verificación en dos pasos</h2>
           <p>
-            Usá un dispositivo registrado o tu aplicación de respaldo. Si es tu
-            primer acceso, configurá la aplicación y conservá su recuperación
-            por un canal seguro.
+            Confirmá que sos vos con un dispositivo registrado. También podés
+            usar el código actual de tu aplicación de respaldo. Si es tu primer
+            acceso, configurá esa aplicación y conservá su recuperación por un
+            canal seguro.
           </p>
           {deviceMfaEnabled &&
             deviceFactors.map((d) => (
-              <button
-                key={d.id}
-                className="button primary"
-                disabled={busy}
-                onClick={() =>
-                  void action(async () => {
-                    if (!deviceSupported() || !deviceConfigurationValid()) {
-                      setError(
-                        "Este dispositivo o la configuración no son compatibles. Usá el código de respaldo.",
-                      );
-                      return;
-                    }
-                    ceremony.current?.abort();
-                    ceremony.current = new AbortController();
-                    const r = await verifyDevice(
-                      {
-                        factorId: d.id,
-                        webauthn: {
-                          rpId: deviceRpId,
-                          rpOrigins: [location.origin],
-                          signal: ceremony.current.signal,
+              <div key={d.id} className="admin-device-option">
+                <button
+                  aria-describedby={`admin-device-${d.id}`}
+                  className="button primary"
+                  disabled={busy}
+                  onClick={() =>
+                    void action(async () => {
+                      if (!deviceSupported() || !deviceConfigurationValid()) {
+                        setError(
+                          "Este dispositivo o la configuración no son compatibles. Usá el código de respaldo.",
+                        );
+                        return;
+                      }
+                      ceremony.current?.abort();
+                      ceremony.current = new AbortController();
+                      const r = await verifyDevice(
+                        {
+                          factorId: d.id,
+                          webauthn: {
+                            rpId: deviceRpId,
+                            rpOrigins: [location.origin],
+                            signal: ceremony.current.signal,
+                          },
                         },
-                      },
-                      { userVerification: "required" },
-                    );
-                    if (r.error) throw r.error;
-                    await inspect();
-                  })
-                }
-              >
-                Verificar con huella, rostro o PIN ·{" "}
-                {d.friendly_name || "Dispositivo"}
-              </button>
+                        { userVerification: "required" },
+                      );
+                      if (r.error) throw r.error;
+                      await inspect();
+                    })
+                  }
+                >
+                  Ingresar con huella, rostro o PIN
+                </button>
+                <p id={`admin-device-${d.id}`}>
+                  {d.friendly_name || "Dispositivo registrado"}
+                </p>
+              </div>
             ))}
           {!factor ? (
             <button
-              className="button primary"
+              className={`button ${deviceMfaEnabled && deviceFactors.length ? "secondary" : "primary"}`}
               disabled={busy}
               onClick={() => void action(setup)}
             >
