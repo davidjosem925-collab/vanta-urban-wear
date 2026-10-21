@@ -38,23 +38,35 @@ function configure() {
   }
 }
 export const adminClient = configure();
+export class AdminError extends Error {
+  constructor(
+    message: string,
+    public kind = "unknown",
+  ) {
+    super(message);
+  }
+}
 export function safeError(error: unknown): Error {
   const e = error as { code?: string; message?: string };
   if (e?.code === "42501" || e?.message?.includes("FORBIDDEN"))
-    return new Error("Acceso no autorizado. Verificá tu sesión y MFA.");
+    return new AdminError("Acceso no autorizado. Verificá tu sesión y MFA.");
   if (e?.code === "23505")
-    return new Error("Ese slug, SKU o combinación ya existe.");
+    return new AdminError(
+      "Esa dirección, código interno o combinación ya existe. Revisá los datos.",
+      "duplicate",
+    );
   if (e?.message?.includes("EDIT_CONFLICT"))
-    return new Error(
-      "Otra edición modificó estos datos. Recargá antes de continuar.",
+    return new AdminError(
+      "La información cambió desde que comenzaste a editar. Consultá los datos actuales antes de guardar.",
+      "conflict",
     );
   if (e?.message?.includes("INVALID_STOCK_ADJUSTMENT"))
-    return new Error(
+    return new AdminError(
       "El ajuste dejaría stock inferior a lo reservado o fuera de rango.",
     );
   if (e?.code === "23503")
-    return new Error("La relación seleccionada no está disponible.");
-  return new Error(
+    return new AdminError("La relación seleccionada no está disponible.");
+  return new AdminError(
     "No pudimos completar la operación. Conservá el intento y reintentá o recargá los datos.",
   );
 }

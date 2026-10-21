@@ -3,6 +3,7 @@ import type { Session } from "@supabase/supabase-js";
 import { adminClient as client, rpc } from "./client";
 import { AdminWorkspace } from "./Workspace";
 import "./admin.css";
+import { clearAdminPreviews } from "./previews";
 export function AdminPage() {
   const [session, setSession] = useState<Session | null>(null),
     [state, setState] = useState<
@@ -15,10 +16,13 @@ export function AdminPage() {
     [qr, setQr] = useState(""),
     [recovery, setRecovery] = useState(false);
   const generation = useRef(0);
+  const authorizedUser = useRef<string | null>(null);
   const [authRevision, setAuthRevision] = useState(0);
   const initialCallback = useRef(new URL(location.href));
   const exchange = useRef<Promise<{ error: unknown }> | null>(null);
   const deny = useCallback(() => {
+    authorizedUser.current = null;
+    clearAdminPreviews();
     setState("denied");
     setSession(null);
   }, []);
@@ -33,22 +37,32 @@ export function AdminPage() {
       if (id !== generation.current) return;
       setSession(s.session);
       if (!s.session) {
+        authorizedUser.current = null;
+        clearAdminPreviews();
         setState("login");
         return;
       }
       const { error } = await client.auth.getUser();
       if (error) throw error;
       if (!(await rpc<boolean>("admin_membership", {}))) {
-        if (id === generation.current) setState("denied");
+        if (id === generation.current) {
+          authorizedUser.current = null;
+          clearAdminPreviews();
+          setState("denied");
+        }
         return;
       }
       const { data, error: aalError } =
         await client.auth.mfa.getAuthenticatorAssuranceLevel();
       if (aalError) throw aalError;
       if (id !== generation.current) return;
+      authorizedUser.current =
+        data.currentLevel === "aal2" ? s.session.user.id : null;
       setState(data.currentLevel === "aal2" ? "ready" : "mfa");
     } catch {
       if (id !== generation.current) return;
+      authorizedUser.current = null;
+      clearAdminPreviews();
       setSession(null);
       setState("denied");
       setError(
@@ -94,13 +108,19 @@ export function AdminPage() {
       generation.current++;
       setAuthRevision((v) => v + 1);
       setSession(next);
-      setQr("");
-      setFactor("");
+      const sameAuthorizedUser = next?.user.id === authorizedUser.current;
+      if (!sameAuthorizedUser) {
+        setQr("");
+        setFactor("");
+      }
       if (event === "PASSWORD_RECOVERY") setRecovery(true);
       if (event === "SIGNED_OUT") {
         setState("login");
         setRecovery(false);
-      } else if (event !== "TOKEN_REFRESHED") setState("loading");
+        authorizedUser.current = null;
+        clearAdminPreviews();
+      } else if (!sameAuthorizedUser || event === "PASSWORD_RECOVERY")
+        setState("loading");
     });
     const focus = () => {
       if (active) void inspect();
@@ -133,6 +153,15 @@ export function AdminPage() {
     }
   }
   async function logout() {
+    if (
+      document.querySelector('[data-admin-dirty="true"]') &&
+      !window.confirm(
+        "Tenés cambios sin guardar. ¿Querés descartarlos y cerrar sesión?",
+      )
+    )
+      return;
+    authorizedUser.current = null;
+    clearAdminPreviews();
     await client?.auth.signOut({ scope: "local" });
     setSession(null);
     setQr("");
@@ -174,7 +203,7 @@ export function AdminPage() {
         <div>
           <p className="eyebrow">VANTA / ACCESO PRIVADO</p>
           <h1 id="admin-title">Administración</h1>
-          <p>Catálogo e inventario. Pedidos exclusivamente de demostración.</p>
+          <p>Tu colección, en orden. Administrá cada detalle de VANTA.</p>
         </div>
         {session && (
           <button

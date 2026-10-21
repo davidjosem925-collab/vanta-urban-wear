@@ -7,7 +7,16 @@ import {
   money,
   date,
 } from "./model";
-export function Orders({ onUnauthorized }: { onUnauthorized(): void }) {
+import { friendly } from "./ux";
+export function Orders({
+  onUnauthorized,
+  selectedId,
+  navigate,
+}: {
+  onUnauthorized(): void;
+  selectedId?: string;
+  navigate(target: string): void;
+}) {
   const [orders, setOrders] = useState<DemoOrder[]>([]),
     [page, setPage] = useState(0),
     [filter, setFilter] = useState({
@@ -43,7 +52,9 @@ export function Orders({ onUnauthorized }: { onUnauthorized(): void }) {
       if (filter.status !== "all") q = q.eq("status", filter.status);
       if (filter.ref) {
         if (!/^[a-f0-9-]{36}$/.test(filter.ref))
-          throw new Error("Ingresá una referencia UUID completa.");
+          throw new Error(
+            "Ingresá la referencia completa del pedido, tal como aparece en su detalle.",
+          );
         q = q.eq("public_reference", filter.ref);
       }
       if (filter.from)
@@ -64,60 +75,67 @@ export function Orders({ onUnauthorized }: { onUnauthorized(): void }) {
       if (id === generation.current) setLoading(false);
     }
   }, [filter, page, onUnauthorized]);
+  const detail = useCallback(
+    async (order: { id: string }) => {
+      const id = ++generation.current;
+      setLoading(true);
+      setError("");
+      setSelected(null);
+      try {
+        if (!(await rpc<boolean>("is_admin", {}))) {
+          onUnauthorized();
+          return;
+        }
+        // Recheck demo scope for detail too; never request contact/address or capabilities.
+        const list = await rows<DemoOrder[]>(
+          connected()
+            .from("orders")
+            .select(
+              "id,public_reference,status,created_at,reservation_expires_at,reservation_resolved_at,subtotal_cents,delivery,demo_payment",
+            )
+            .eq("is_demo", true)
+            .eq("id", order.id),
+        );
+        if (!list.length) throw new Error("Pedido no disponible.");
+        const [is, rs] = await Promise.all([
+          rows<OrderItem[]>(
+            connected()
+              .from("order_items")
+              .select(
+                "id,product_name,sku,size,color,quantity,unit_price_cents,line_total_cents",
+              )
+              .eq("order_id", order.id),
+          ),
+          rows<Reservation[]>(
+            connected()
+              .from("stock_reservations")
+              .select("id,variant_id,quantity,status,expires_at")
+              .eq("order_id", order.id),
+          ),
+        ]);
+        if (id !== generation.current) return;
+        setItems(is);
+        setReservations(rs);
+        setSelected(list[0]);
+      } catch (e) {
+        if (id === generation.current) setError((e as Error).message);
+      } finally {
+        if (id === generation.current) setLoading(false);
+      }
+    },
+    [onUnauthorized],
+  );
   useEffect(() => {
     const counter = generation;
-    void load();
+    if (selectedId) void detail({ id: selectedId });
+    else {
+      setSelected(null);
+      void load();
+    }
     return () => {
       counter.current++;
     };
-  }, [load]);
-  async function detail(order: DemoOrder) {
-    const id = ++generation.current;
-    setLoading(true);
-    setError("");
-    setSelected(null);
-    try {
-      if (!(await rpc<boolean>("is_admin", {}))) {
-        onUnauthorized();
-        return;
-      }
-      // Recheck demo scope for detail too; never request contact/address or capabilities.
-      const list = await rows<DemoOrder[]>(
-        connected()
-          .from("orders")
-          .select(
-            "id,public_reference,status,created_at,reservation_expires_at,reservation_resolved_at,subtotal_cents,delivery,demo_payment",
-          )
-          .eq("is_demo", true)
-          .eq("id", order.id),
-      );
-      if (!list.length) throw new Error("Pedido no disponible.");
-      const [is, rs] = await Promise.all([
-        rows<OrderItem[]>(
-          connected()
-            .from("order_items")
-            .select(
-              "id,product_name,sku,size,color,quantity,unit_price_cents,line_total_cents",
-            )
-            .eq("order_id", order.id),
-        ),
-        rows<Reservation[]>(
-          connected()
-            .from("stock_reservations")
-            .select("id,variant_id,quantity,status,expires_at")
-            .eq("order_id", order.id),
-        ),
-      ]);
-      if (id !== generation.current) return;
-      setItems(is);
-      setReservations(rs);
-      setSelected(list[0]);
-    } catch (e) {
-      if (id === generation.current) setError((e as Error).message);
-    } finally {
-      if (id === generation.current) setLoading(false);
-    }
-  }
+  }, [selectedId, detail, load]);
   return (
     <section>
       <div className="admin-toolbar">
@@ -126,7 +144,7 @@ export function Orders({ onUnauthorized }: { onUnauthorized(): void }) {
           className="button secondary"
           disabled={loading}
           onClick={() => {
-            if (selected) void detail(selected);
+            if (selectedId) void detail({ id: selectedId });
             else void load();
           }}
         >
@@ -134,8 +152,8 @@ export function Orders({ onUnauthorized }: { onUnauthorized(): void }) {
         </button>
       </div>
       <p>
-        Solo consulta. Sin cobros ni datos personales del formulario. La reserva
-        vence a los 60 minutos y cron libera en su siguiente ejecución.
+        Pedidos ficticios, sin cobros. Las reservas duran 60 minutos; su
+        liberación se procesa automáticamente.
       </p>
       {error && (
         <p className="admin-alert" role="alert">
@@ -147,7 +165,7 @@ export function Orders({ onUnauthorized }: { onUnauthorized(): void }) {
         <article className="admin-card">
           <button
             className="button secondary"
-            onClick={() => setSelected(null)}
+            onClick={() => navigate("#/admin/pedidos")}
           >
             Volver a pedidos
           </button>
@@ -155,7 +173,7 @@ export function Orders({ onUnauthorized }: { onUnauthorized(): void }) {
           <dl className="admin-facts">
             <div>
               <dt>Estado</dt>
-              <dd>{selected.status}</dd>
+              <dd>{friendly(selected.status)}</dd>
             </div>
             <div>
               <dt>Creado</dt>
@@ -180,16 +198,17 @@ export function Orders({ onUnauthorized }: { onUnauthorized(): void }) {
             <div>
               <dt>Modalidad demo</dt>
               <dd>
-                {selected.delivery} · {selected.demo_payment}
+                {friendly(selected.delivery)} ·{" "}
+                {friendly(selected.demo_payment)}
               </dd>
             </div>
           </dl>
-          <h4>Prendas</h4>
+          <h4>Productos del pedido</h4>
           {items.map((i) => (
             <div className="admin-line" key={i.id}>
               <strong>{i.product_name}</strong>
               <p>
-                {i.sku} · {i.size} / {i.color} · {i.quantity} unidades
+                {i.size} / {i.color} · {i.quantity} unidades
               </p>
               <p>
                 Unitario: {money(i.unit_price_cents)} · Subtotal:{" "}
@@ -200,14 +219,22 @@ export function Orders({ onUnauthorized }: { onUnauthorized(): void }) {
           <h4>Reservas</h4>
           {reservations.map((r) => (
             <p key={r.id}>
-              {r.quantity} unidades · {r.status} · vence {date(r.expires_at)}
+              {r.quantity} unidades · {friendly(r.status)} · vencimiento{" "}
+              {date(r.expires_at)}
             </p>
           ))}
           <p className="admin-muted">
-            Un reloj del navegador no modifica el estado: la autoridad es
-            PostgreSQL. Actualizá para consultar el resultado del job.
+            El estado se actualiza en el servidor. Pulsá Actualizar pedidos para
+            consultar el resultado más reciente.
           </p>
         </article>
+      ) : selectedId ? (
+        !loading && (
+          <p>
+            No se pudo consultar este pedido. Volvé al listado o reintentá la
+            consulta.
+          </p>
+        )
       ) : (
         <>
           <form
@@ -241,7 +268,7 @@ export function Orders({ onUnauthorized }: { onUnauthorized(): void }) {
                   "delivered",
                 ].map((s) => (
                   <option key={s} value={s}>
-                    {s === "all" ? "Todos" : s}
+                    {s === "all" ? "Todos" : friendly(s)}
                   </option>
                 ))}
               </select>
@@ -265,13 +292,13 @@ export function Orders({ onUnauthorized }: { onUnauthorized(): void }) {
                 <div>
                   <h3>{o.public_reference}</h3>
                   <p>
-                    {o.status} · {date(o.created_at)} ·{" "}
+                    {friendly(o.status)} · {date(o.created_at)} ·{" "}
                     {money(o.subtotal_cents)}
                   </p>
                 </div>
                 <button
                   className="button secondary"
-                  onClick={() => void detail(o)}
+                  onClick={() => navigate(`#/admin/pedidos/${o.id}`)}
                 >
                   Ver detalle
                 </button>

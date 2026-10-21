@@ -78,7 +78,7 @@ set display_name=excluded.display_name, active=excluded.active;
 
 La FK evita usuarios inexistentes, pero no identifica por vos a la persona correcta.
 No conceder DML de esta tabla a authenticated ni usar user*metadata para autorizar.
-No guardar contraseña, secreto TOTP, service_role o sb_secret*_ en VITE\__ ni Git.
+No guardar contraseña, secreto TOTP, service_role o sb_secret*\_ en VITE\_\_ ni Git.
 
 ### 3. Migración incremental, una vez
 
@@ -186,3 +186,5 @@ estén activados por haber probado localmente. El servicio Storage HTTP alojado 
 la entrega real de correo requieren el smoke test manual anterior; las políticas
 se prueban con PostgreSQL y uploads con fixtures del navegador. No se enviaron
 correos ni se ejecutó ninguna operación administrativa contra Supabase remoto.
+
+El refinamiento de navegación y tareas del panel está documentado en [admin-ux.md](admin-ux.md). No requiere otra migración.

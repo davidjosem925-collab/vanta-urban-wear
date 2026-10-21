@@ -10,7 +10,7 @@ export type Route =
 export function parseRoute(hash: string): Route {
   try {
     const path = hash.replace(/^#/, "") || "/";
-    if (path === "/admin") return { kind: "admin" };
+    if (/^\/admin(?:\/|\?|$)/.test(path)) return { kind: "admin" };
     if (path === "/") return { kind: "home" };
     if (path === "/catalogo") return { kind: "catalog" };
     if (path === "/checkout") return { kind: "checkout", step: "details" };

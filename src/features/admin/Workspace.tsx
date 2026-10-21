@@ -2,8 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { connected, rows, rpc } from "./client";
 import { ProductEditor } from "./ProductEditor";
 import { Orders } from "./Orders";
+import { useAdminNavigation } from "./navigation";
+import { imagePreviews } from "./previews";
+import { originals } from "./ux";
 import {
   type AdminProduct,
+  type AdminImage,
   type Adjustment,
   type Movement,
   money,
@@ -16,19 +20,18 @@ export function AdminWorkspace({
   userId: string;
   onUnauthorized(): void;
 }) {
-  const [tab, setTab] = useState<"products" | "orders">("products"),
-    [products, setProducts] = useState<AdminProduct[]>([]),
-    [page, setPage] = useState(0),
-    [term, setTerm] = useState(""),
-    [status, setStatus] = useState("all"),
-    [selected, setSelected] = useState<AdminProduct | null | undefined>(
-      undefined,
-    ),
+  const { view, navigate, setDirty } = useAdminNavigation();
+  const [products, setProducts] = useState<AdminProduct[]>([]),
+    [product, setProduct] = useState<AdminProduct | null>(null),
+    [categories, setCategories] = useState<{ id: string; name: string }[]>([]),
+    [images, setImages] = useState<AdminImage[]>([]),
+    [previews, setPreviews] = useState<Record<string, string>>({}),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
-  const mounted = useRef(true),
-    request = useRef(0);
+    [notice, setNotice] = useState(""),
+    [revision, setRevision] = useState(0),
+    [resolving, setResolving] = useState(false);
+  const generation = useRef(0);
   const pendingKey = `vanta.admin.adjust.${userId}`;
   const [pending, setPending] = useState<Adjustment | null>(() => {
     try {
@@ -37,247 +40,453 @@ export function AdminWorkspace({
       return null;
     }
   });
+  const page = Math.max(
+    0,
+    Math.min(100000, Number(view.query.get("pagina")) || 0),
+  );
+  const search = view.query.get("buscar") ?? "",
+    status = view.query.get("estado") ?? "all";
+  const returnList = useRef("#/admin/productos"),
+    returnStock = useRef("#/admin/stock");
+  // Use the hook snapshot, not location.hash, which may already point at the next view.
+  if (view.area === "productos" && !view.id)
+    returnList.current = `#/admin/productos${view.query.size ? `?${view.query}` : ""}`;
+  if (view.area === "stock" && !view.id)
+    returnStock.current = `#/admin/stock${view.query.size ? `?${view.query}` : ""}`;
   const load = useCallback(async () => {
-    const id = ++request.current;
+    const id = ++generation.current;
     setLoading(true);
+    setError("");
+    setProduct(null);
+    if (view.area === "pedidos") {
+      setLoading(false);
+      return;
+    }
     try {
       if (!(await rpc<boolean>("is_admin", {}))) {
         onUnauthorized();
         return;
       }
-      let q = connected()
-        .from("products")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .order("id")
-        .range(page * 20, page * 20 + 19);
-      if (term) q = q.ilike("name", `%${term.replace(/[%_\\]/g, "")}%`);
-      if (status !== "all") q = q.eq("active", status === "published");
-      const result = await rows<AdminProduct[]>(q);
-      if (mounted.current && id === request.current) {
-        setProducts(result);
-        setError("");
+      const c = connected();
+      if (view.id && view.id !== "nuevo") {
+        const ps = await rows<AdminProduct[]>(
+          c.from("products").select("*").eq("id", view.id),
+        );
+        if (!ps.length)
+          throw new Error(
+            "No encontramos ese producto. Volvé al listado para consultar los disponibles.",
+          );
+        if (id === generation.current) setProduct(ps[0]);
+      } else if (!view.id) {
+        let q = c
+          .from("products")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .order("id")
+          .range(page * 20, page * 20 + 19);
+        if (search) q = q.ilike("name", `%${search.replace(/[%_\\]/g, "")}%`);
+        if (status !== "all") q = q.eq("active", status === "published");
+        const [ps, cs] = await Promise.all([
+          rows<AdminProduct[]>(q),
+          rows<{ id: string; name: string }[]>(
+            c.from("categories").select("id,name").order("name"),
+          ),
+        ]);
+        if (id !== generation.current) return;
+        setProducts(ps);
+        setCategories(cs);
+        // Photograph availability never turns a successful product query into a failed save.
+        try {
+          const ims = ps.length
+            ? await rows<AdminImage[]>(
+                c
+                  .from("product_images")
+                  .select("*")
+                  .in(
+                    "product_id",
+                    ps.map((p) => p.id),
+                  )
+                  .order("position"),
+              )
+            : [];
+          const urls = await imagePreviews(ims);
+          if (id === generation.current) {
+            setImages(ims);
+            setPreviews(urls);
+          }
+        } catch {
+          if (id === generation.current) {
+            setImages([]);
+            setPreviews({});
+          }
+        }
       }
     } catch (e) {
-      if (mounted.current) setError((e as Error).message);
+      if (id === generation.current)
+        setError(
+          (e as Error).message.startsWith("No encontramos")
+            ? (e as Error).message
+            : "No se pudieron actualizar los datos. Reintentar consulta no vuelve a guardar el producto.",
+        );
     } finally {
-      if (mounted.current && id === request.current) setLoading(false);
+      if (id === generation.current) setLoading(false);
     }
-  }, [onUnauthorized, page, status, term]);
+  }, [view.area, view.id, page, search, status, onUnauthorized]);
   useEffect(() => {
-    mounted.current = true;
     void load();
+    const counter = generation;
     return () => {
-      mounted.current = false;
+      counter.current++;
     };
   }, [load]);
+  const trackDirty = useCallback(
+    (value: boolean) => {
+      setDirty(value);
+      if (value) setNotice("");
+    },
+    [setDirty],
+  );
   async function adjust(a: Adjustment) {
-    setError("");
+    // Persist intent BEFORE writing. A failed persistence prevents the write.
     try {
       sessionStorage.setItem(pendingKey, JSON.stringify(a));
-      setPending(a);
+    } catch {
+      throw new Error(
+        "No podemos conservar este intento de forma segura en el navegador. Habilitá su almacenamiento antes de cambiar stock. No se envió el cambio.",
+      );
+    }
+    setPending(a);
+    try {
       await rpc("demo_admin_adjust_inventory", {
         p_variant: a.variant,
         p_delta: a.delta,
         p_reason: a.reason,
         p_key: a.key,
       });
-      sessionStorage.removeItem(pendingKey);
-      setPending(null);
-      setNotice(
-        "Ajuste confirmado. El reintento usa la misma clave y no duplica unidades.",
-      );
-      void load();
-      return true;
     } catch (e) {
       if ((e as Error).message.startsWith("El ajuste dejaría")) {
-        sessionStorage.removeItem(pendingKey);
+        try {
+          sessionStorage.removeItem(pendingKey);
+        } catch {
+          /* confirmed movement can be rediscovered on reload */
+        }
         setPending(null);
       }
-      setError((e as Error).message);
-      return false;
+      throw e;
     }
+    // A confirmed RPC remains successful even if local cleanup or a later read fails.
+    try {
+      sessionStorage.removeItem(pendingKey);
+    } catch {
+      /* same-key recovery remains safe */
+    }
+    setPending(null);
   }
   async function resolvePending() {
-    if (!pending) return;
+    if (!pending || resolving) return;
+    setResolving(true);
+    setError("");
+    setNotice("");
     try {
-      const result = await rows<Movement[]>(
+      const found = await rows<Movement[]>(
         connected()
           .from("inventory_movements")
-          .select("*")
+          .select(
+            "id,variant_id,kind,quantity,reason,created_at,idempotency_key",
+          )
           .eq("idempotency_key", pending.key),
       );
-      if (result.length) {
+      if (found.length) {
         if (
-          result[0].variant_id !== pending.variant ||
-          result[0].quantity !== pending.delta ||
-          result[0].reason !== pending.reason
+          found[0].variant_id !== pending.variant ||
+          found[0].quantity !== pending.delta ||
+          found[0].reason !== pending.reason
         )
           throw new Error(
-            "La clave corresponde a un ajuste distinto. Revisá los movimientos antes de continuar.",
+            "El intento corresponde a otro cambio. Revisá el historial antes de continuar.",
           );
-        sessionStorage.removeItem(pendingKey);
+        try {
+          sessionStorage.removeItem(pendingKey);
+        } catch {
+          /* confirmed movement can be rediscovered on reload */
+        }
         setPending(null);
-        setNotice("El ajuste ya estaba registrado. No se repitió.");
       } else await adjust(pending);
+      setNotice(
+        "Stock actualizado correctamente. El cambio se aplicó una sola vez.",
+      );
+      // Do not unmount an open editor or discard its drafts to refresh stock.
+      setRevision((r) => r + 1);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setResolving(false);
     }
   }
+  function listUrl(nextPage: number, term = search, state = status) {
+    const q = new URLSearchParams({
+      buscar: term,
+      estado: state,
+      pagina: String(nextPage),
+    });
+    return `#/admin/${view.area}?${q}`;
+  }
   return (
-    <>
-      <nav className="admin-tabs" aria-label="Administración">
-        <button
-          aria-pressed={tab === "products"}
-          onClick={() => {
-            setTab("products");
-            setSelected(undefined);
-          }}
+    <div className="admin-layout">
+      <nav className="admin-nav" aria-label="Administración">
+        <span className="admin-nav-label">TU TIENDA</span>
+        <a
+          href="#/admin/productos"
+          aria-current={view.area === "productos" ? "page" : undefined}
         >
-          Productos e inventario
-        </button>
-        <button
-          aria-pressed={tab === "orders"}
-          onClick={() => {
-            setTab("orders");
-            setSelected(undefined);
-          }}
+          Productos <span aria-hidden="true">01</span>
+        </a>
+        <a
+          href="#/admin/stock"
+          aria-current={view.area === "stock" ? "page" : undefined}
         >
-          Pedidos demo
-        </button>
-        <a href="#/catalogo">Ver tienda</a>
+          Stock <span aria-hidden="true">02</span>
+        </a>
+        <a
+          href="#/admin/pedidos"
+          aria-label="Pedidos de demostración"
+          aria-current={view.area === "pedidos" ? "page" : undefined}
+        >
+          Pedidos demo <span aria-hidden="true">03</span>
+        </a>
+        <p className="admin-muted">
+          Espacio privado
+          <br />
+          VANTA Urban Wear
+        </p>
       </nav>
-      {error && (
-        <p className="admin-alert" role="alert">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p className="admin-notice" role="status">
-          {notice}
-        </p>
-      )}
-      {pending && (
-        <div className="admin-card" role="status">
-          <p>
-            Hay un ajuste sin resultado confirmado. Cantidad: {pending.delta}.
-            Conservamos su identidad después de recargar.
+      <div className="admin-content">
+        {notice && (
+          <p role="status" className="admin-notice">
+            {notice}
           </p>
-          <button
-            className="button secondary"
-            onClick={() => void resolvePending()}
-          >
-            Consultar o reintentar el mismo ajuste
-          </button>
-        </div>
-      )}
-      {tab === "orders" ? (
-        <Orders onUnauthorized={onUnauthorized} />
-      ) : selected !== undefined ? (
-        <ProductEditor
-          key={selected?.id ?? "new"}
-          product={selected}
-          pending={pending}
-          onAdjust={adjust}
-          onUnauthorized={onUnauthorized}
-          onClose={() => {
-            setSelected(undefined);
-            void load();
-          }}
-          onSaved={(p) => {
-            setSelected(p);
-            setNotice("Producto guardado.");
-            void load();
-          }}
-        />
-      ) : (
-        <>
-          <div className="admin-toolbar">
-            <h2>Productos</h2>
+        )}
+        {error && (
+          <div className="admin-alert" role="alert">
+            <p>{error}</p>
             <button
-              className="button primary"
-              onClick={() => setSelected(null)}
+              className="button secondary"
+              onClick={() => {
+                setNotice("");
+                void load();
+              }}
             >
-              Nuevo producto
+              Reintentar consulta
             </button>
           </div>
-          <form
-            className="admin-filters"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const f = new FormData(e.currentTarget);
-              setPage(0);
-              setTerm(String(f.get("search")).trim());
-              setStatus(String(f.get("status")));
+        )}
+        {pending && (
+          <div className="admin-pending">
+            <strong>Un cambio de stock necesita confirmación</strong>
+            <p>
+              No lo cargues otra vez. Consultamos el intento original para
+              evitar duplicarlo.
+            </p>
+            <button
+              className="button secondary"
+              disabled={resolving}
+              onClick={() => void resolvePending()}
+            >
+              {resolving
+                ? "Consultando…"
+                : "Consultar o reintentar el mismo ajuste"}
+            </button>
+          </div>
+        )}
+        {view.area === "pedidos" ? (
+          <Orders
+            onUnauthorized={onUnauthorized}
+            selectedId={view.id}
+            navigate={navigate}
+          />
+        ) : loading && !product ? (
+          <p role="status" className="admin-loading">
+            Cargando {view.id ? "producto" : "productos"}…
+          </p>
+        ) : view.id && (product || view.id === "nuevo") ? (
+          <ProductEditor
+            key={view.id}
+            product={product}
+            section={view.section}
+            stockOnly={view.area === "stock"}
+            pending={pending}
+            onAdjust={adjust}
+            onUnauthorized={onUnauthorized}
+            onDirty={trackDirty}
+            revision={revision}
+            onSaved={(p, message) => {
+              setProduct(p);
+              if (view.id === "nuevo") {
+                setDirty(false);
+                setNotice(message ?? "Producto guardado correctamente.");
+                navigate(`#/admin/productos/${p.id}/general`, true);
+              }
             }}
-          >
-            <label>
-              Buscar por nombre
-              <input name="search" maxLength={100} />
-            </label>
-            <label>
-              Publicación
-              <select name="status">
-                <option value="all">Todos</option>
-                <option value="published">Publicados</option>
-                <option value="draft">Borradores</option>
-              </select>
-            </label>
-            <button className="button secondary">Filtrar</button>
-            <button
-              className="button secondary"
-              type="button"
-              onClick={() => void load()}
-            >
-              Actualizar
-            </button>
-          </form>
-          {loading ? (
-            <p role="status">Cargando productos…</p>
-          ) : products.length === 0 ? (
-            <p>No hay productos para estos filtros.</p>
-          ) : (
-            <div className="admin-product-list">
-              {products.map((p) => (
-                <article className="admin-card" key={p.id}>
-                  <div>
-                    <h3>{p.name}</h3>
-                    <p>
-                      {p.active ? "Publicado" : "Borrador"} ·{" "}
-                      {money(p.price_cents)}
-                    </p>
-                    <p className="admin-muted">{p.slug}</p>
-                  </div>
-                  <button
-                    className="button secondary"
-                    onClick={() => setSelected(p)}
-                    aria-label={`Editar ${p.name}`}
+            backHref={
+              view.area === "stock" ? returnStock.current : returnList.current
+            }
+          />
+        ) : (
+          !view.id && (
+            <section>
+              <header className="admin-toolbar admin-section-heading">
+                <div>
+                  <p className="eyebrow">
+                    {view.area === "stock" ? "EXISTENCIAS" : "TU COLECCIÓN"}
+                  </p>
+                  <h2>
+                    {view.area === "stock" ? "Control de stock" : "Productos"}
+                  </h2>
+                  <p className="admin-muted">
+                    {view.area === "stock"
+                      ? "Elegí una prenda para consultar o actualizar sus cantidades."
+                      : "Todas tus prendas, listas para encontrar y editar."}
+                  </p>
+                </div>
+                {view.area === "productos" && (
+                  <a
+                    className="button primary"
+                    href="#/admin/productos/nuevo/general"
                   >
-                    Editar
-                  </button>
-                </article>
-              ))}
-            </div>
-          )}
-          <div className="admin-pagination">
-            <button
-              className="button secondary"
-              disabled={!page || loading}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              Anterior
-            </button>
-            <span>Página {page + 1}</span>
-            <button
-              className="button secondary"
-              disabled={products.length < 20 || loading}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Siguiente
-            </button>
-          </div>
-        </>
-      )}
-    </>
+                    + Agregar producto
+                  </a>
+                )}
+              </header>
+              <form
+                className="admin-filters"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const f = new FormData(e.currentTarget);
+                  navigate(
+                    listUrl(
+                      0,
+                      String(f.get("search")).trim(),
+                      String(f.get("status")),
+                    ),
+                  );
+                }}
+              >
+                <label>
+                  Buscar producto
+                  <input
+                    name="search"
+                    placeholder="Nombre de la prenda"
+                    defaultValue={search}
+                    maxLength={100}
+                  />
+                </label>
+                <label>
+                  Publicación
+                  <select name="status" defaultValue={status}>
+                    <option value="all">Todos los productos</option>
+                    <option value="published">Publicados</option>
+                    <option value="draft">Borradores</option>
+                  </select>
+                </label>
+                <button className="button secondary">Buscar</button>
+                <button
+                  className="admin-text-action"
+                  type="button"
+                  onClick={() => void load()}
+                >
+                  Actualizar
+                </button>
+              </form>
+              {!products.length ? (
+                <div className="admin-empty">
+                  <h3>No encontramos prendas</h3>
+                  <p>Probá otro nombre o cambiá el filtro de publicación.</p>
+                </div>
+              ) : (
+                <div className="admin-collection">
+                  <div className="admin-collection-head" aria-hidden="true">
+                    <span>Producto</span>
+                    <span>Precio</span>
+                    <span>Publicación</span>
+                    <span>Acción</span>
+                  </div>
+                  {products.map((p) => {
+                    const im = originals(
+                      images.filter((i) => i.product_id === p.id),
+                    )[0];
+                    return (
+                      <article className="admin-product-row" key={p.id}>
+                        <div className="admin-product-identity">
+                          <div className="admin-thumb">
+                            {im && previews[im.storage_path] ? (
+                              <img
+                                src={previews[im.storage_path]}
+                                alt={im.alt}
+                                width="64"
+                                height="80"
+                                loading="lazy"
+                                onError={(e) => {
+                                  e.currentTarget.hidden = true;
+                                }}
+                              />
+                            ) : (
+                              <span aria-label="Sin fotografía">V</span>
+                            )}
+                          </div>
+                          <div>
+                            <h3>{p.name}</h3>
+                            <p>
+                              {categories.find((c) => c.id === p.category_id)
+                                ?.name ?? "Categoría no disponible"}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="admin-product-price">
+                          {money(p.price_cents)}
+                        </p>
+                        <span
+                          className={`admin-badge ${p.active ? "published" : ""}`}
+                        >
+                          {p.active ? "Publicado" : "Borrador"}
+                        </span>
+                        <a
+                          className="admin-row-link"
+                          href={
+                            view.area === "stock"
+                              ? `#/admin/stock/${p.id}`
+                              : `#/admin/productos/${p.id}/general`
+                          }
+                          aria-label={`${view.area === "stock" ? "Ver stock de" : "Editar"} ${p.name}`}
+                        >
+                          {view.area === "stock" ? "Ver stock" : "Editar"}{" "}
+                          <span aria-hidden="true">→</span>
+                        </a>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="admin-pagination">
+                <button
+                  className="button secondary"
+                  disabled={!page || loading}
+                  onClick={() => navigate(listUrl(page - 1))}
+                >
+                  Anterior
+                </button>
+                <span>Página {page + 1}</span>
+                <button
+                  className="button secondary"
+                  disabled={products.length < 20 || loading}
+                  onClick={() => navigate(listUrl(page + 1))}
+                >
+                  Siguiente
+                </button>
+              </div>
+            </section>
+          )
+        )}
+      </div>
+    </div>
   );
 }
