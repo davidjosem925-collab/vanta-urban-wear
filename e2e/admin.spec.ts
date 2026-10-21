@@ -374,7 +374,20 @@ test("admin UX: stock add/remove, reservation protection and movement history", 
     .getByRole("button", { name: "Actualizar stock Negro talle M" })
     .click();
   await page.getByLabel("Cantidad de unidades").fill("2");
+  await page.getByLabel("Motivo del cambio").fill("   ");
+  await expect(page.getByLabel("Motivo del cambio")).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await expect(
+    page.getByRole("button", { name: "Revisar cambio de stock" }),
+  ).toBeDisabled();
+  expect(state.getMovements()).toHaveLength(0);
   await page.getByLabel("Motivo del cambio").fill("Ingreso de prendas");
+  await page
+    .getByRole("button", { name: "Actualizar cantidades de stock" })
+    .click();
+  await expect(page.getByLabel("Cantidad de unidades")).toHaveValue("2");
   await page.getByRole("button", { name: "Revisar cambio de stock" }).click();
   await page.keyboard.press("Escape");
   await expect(
@@ -682,4 +695,130 @@ test("admin UX: concurrent product changes are reviewed instead of silently over
   expect(state.writes.filter((w) => w === "admin_save_product")).toHaveLength(
     1,
   );
+});
+test("admin UX: a name without an automatic address has visible validation, not a hidden required field", async ({
+  page,
+}) => {
+  const state = await fixture(page, { empty: true });
+  await page.getByRole("link", { name: "Agregar producto" }).click();
+  await page.getByLabel("Nombre del producto").fill("✨");
+  await page
+    .getByRole("combobox", { name: "Categoría", exact: true })
+    .selectOption(id);
+  await page.getByLabel("Precio en ARS").fill("27000");
+  await page.getByRole("button", { name: "Guardar borrador" }).click();
+  await expect(page.getByText(/No pudimos generar la dirección/)).toBeVisible();
+  await expect(
+    page.getByLabel("Dirección del producto", { exact: true }),
+  ).toBeVisible();
+  expect(state.writes).toEqual([]);
+  await page
+    .getByLabel("Dirección del producto", { exact: true })
+    .fill("coleccion-urbana");
+  await page.getByRole("button", { name: "Guardar borrador" }).click();
+  await expect(
+    page.getByText("Producto guardado correctamente."),
+  ).toBeVisible();
+  expect(state.getProduct().slug).toBe("coleccion-urbana");
+  expect(state.errors).toEqual([]);
+});
+test("admin UX: refreshing other data cannot advance the version of an unsaved combination or photograph", async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  await edit(page);
+  await section(page, "Talles y colores");
+  await page
+    .getByRole("button", { name: "Editar talle M", exact: true })
+    .click();
+  await page.getByLabel("Código interno", { exact: true }).fill("MI-CODIGO");
+  state.getVariants()[0].sku = "CODIGO-EXTERNO";
+  await page
+    .getByRole("button", { name: "Actualizar talles y colores" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Actualizar talles y colores" }),
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Guardar talle", exact: true })
+    .click();
+  await expect(
+    page.getByText(/La información cambió desde que comenzaste/),
+  ).toBeVisible();
+  expect(state.getVariants()[0].sku).toBe("CODIGO-EXTERNO");
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "Usar datos guardados" }).click();
+  await expect(page.getByLabel("Código interno", { exact: true })).toHaveValue(
+    "CODIGO-EXTERNO",
+  );
+  await section(page, "Fotografías");
+  await upload(page, "Descripción original");
+  await page
+    .getByLabel("Descripción de foto 1", { exact: true })
+    .fill("Mi descripción pendiente");
+  state.getImages().forEach((im) => {
+    im.alt = "Descripción externa";
+  });
+  await page.getByRole("button", { name: "Renovar vistas previas" }).click();
+  await expect(
+    page.getByRole("button", { name: "Renovar vistas previas" }),
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Guardar descripción", exact: true })
+    .click();
+  await expect(page.getByText(/La descripción guardada cambió/)).toBeVisible();
+  expect(state.getImages()[0].alt).toBe("Descripción externa");
+  expect(state.writes.filter((w) => w === "admin_save_images")).toHaveLength(1);
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "Usar descripción guardada" }).click();
+  await expect(
+    page.getByLabel("Descripción de foto 1", { exact: true }),
+  ).toHaveValue("Descripción externa");
+  await noOverflow(page);
+  expect(state.errors).toEqual([]);
+});
+test("admin UX: a late creation response cannot redirect or replace a newer view", async ({
+  page,
+}) => {
+  const state = await fixture(page, { empty: true });
+  let release!: () => void;
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  await page.route("**/rest/v1/rpc/admin_save_product", async (route) => {
+    await gate;
+    await route.fallback();
+  });
+  await page.getByRole("link", { name: "Agregar producto" }).click();
+  await page.getByLabel("Nombre del producto").fill("Guardado lento");
+  await page
+    .getByRole("combobox", { name: "Categoría", exact: true })
+    .selectOption(id);
+  await page.getByLabel("Precio en ARS").fill("27000");
+  const started = page.waitForRequest((r) =>
+    r.url().includes("/rpc/admin_save_product"),
+  );
+  await page.getByRole("button", { name: "Guardar borrador" }).click();
+  await started;
+  page.once("dialog", (d) => {
+    expect(d.message()).toContain("puede completarse igual");
+    return d.accept();
+  });
+  await page.getByRole("link", { name: "Stock", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/stock$/);
+  const response = page.waitForResponse((r) =>
+    r.url().includes("/rpc/admin_save_product"),
+  );
+  release();
+  await response;
+  await page.waitForLoadState("networkidle");
+  await expect(page).toHaveURL(/\/admin\/stock$/);
+  await expect(
+    page.getByRole("heading", { name: "Control de stock", exact: true }),
+  ).toBeVisible();
+  expect(state.getProduct().name).toBe("Guardado lento");
+  expect(state.writes.filter((w) => w === "admin_save_product")).toHaveLength(
+    1,
+  );
+  expect(state.errors).toEqual([]);
 });

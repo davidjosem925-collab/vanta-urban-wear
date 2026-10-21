@@ -43,9 +43,18 @@ La activación original sigue documentada en [stage-6-admin.md](stage-6-admin.md
    la confirmación del servidor y se muestra una advertencia de consulta separada.
    Reintentar consulta nunca repite una escritura. Un alta de respuesta incierta
    consulta su dirección antes de permitir otro intento; la unicidad sigue en SQL.
-3. **Edición concurrente.** Se mantienen timestamps/snapshots esperados. Un conflicto
+3. **Validación rechazada vs. respuesta incierta.** Motivos vacíos o compuestos
+   solo por espacios se rechazan antes de crear el intento de stock. Una excepción
+   de validación confirmada por PostgreSQL no se conserva como resultado incierto;
+   no hubo escritura. Errores de red siguen conservando la misma clave. Las altas
+   validan direcciones vacías sin depender de un campo obligatorio oculto.
+4. **Edición concurrente.** Se mantienen timestamps/snapshots esperados. Un conflicto
    conserva el formulario y permite consultar/adoptar explícitamente la versión
-   guardada; no se actualiza silenciosamente el token de concurrencia.
+   guardada; no se actualiza silenciosamente el token de concurrencia. Las
+   combinaciones guardan su snapshot al abrir la edición, incluso si se consulta
+   información nueva en otra sección. Las descripciones de fotos detectan cambios
+   del texto base y requieren adoptar expresamente la versión guardada. Consultar
+   stock o combinaciones no descarta los formularios pendientes.
 
 ## Navegación y cambios pendientes
 
@@ -60,7 +69,9 @@ Las rutas restauran producto y sección al recargar, incluso después de login/M
 Atrás/Adelante funcionan con el router hash existente. Pasar entre secciones del
 mismo producto conserva los formularios sin guardar. Al abandonar ese contexto,
 cerrar sesión o recargar, se solicita confirmación si hay cambios pendientes.
-Aceptar descartarlos los elimina; no se promete recuperar formularios no guardados
+Si hay una operación en curso se advierte que puede completarse incluso al salir;
+su respuesta no redirige ni reemplaza el producto abierto después. Aceptar descartar
+formularios los elimina; no se promete recuperar formularios no guardados
 tras cerrar el navegador. Una revocación de acceso siempre tiene prioridad sobre
 los borradores locales. Los ajustes de resultado incierto conservan la clave en
 sessionStorage por usuario y se recuperan consultando el movimiento o reintentando

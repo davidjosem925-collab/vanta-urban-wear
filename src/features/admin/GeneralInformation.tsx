@@ -29,6 +29,7 @@ export function GeneralInformation({
     [slug, setSlug] = useState(""),
     [customSlug, setCustomSlug] = useState(false),
     [collision, setCollision] = useState(false),
+    [addressIssue, setAddressIssue] = useState(false),
     [uncertain, setUncertain] = useState(false),
     [conflict, setConflict] = useState(false),
     [serverCopy, setServerCopy] = useState<AdminProduct | null>(null);
@@ -49,6 +50,14 @@ export function GeneralInformation({
         onSubmit={(e) => {
           e.preventDefault();
           void execute(async () => {
+            if (!name.trim())
+              throw new Error("Escribí el nombre del producto.");
+            if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(address)) {
+              setAddressIssue(true);
+              throw new Error(
+                "No pudimos generar la dirección. Elegí una alternativa con letras, números y guiones.",
+              );
+            }
             const values = {
               name: name.trim(),
               category_id: category,
@@ -158,7 +167,7 @@ export function GeneralInformation({
             </div>
           </div>
           {!product && (
-            <details open={collision || undefined}>
+            <details open={collision || addressIssue || undefined}>
               <summary>
                 Dirección del producto{" "}
                 {collision
@@ -180,7 +189,6 @@ export function GeneralInformation({
                       setSlug(e.target.value);
                     })
                   }
-                  required
                   pattern="[a-z0-9]+(-[a-z0-9]+)*"
                   maxLength={150}
                 />

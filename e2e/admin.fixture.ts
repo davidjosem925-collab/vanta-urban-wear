@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 import { expect, type Page } from "@playwright/test";
 export const id = "10000000-0000-0000-0000-000000000001",
   variant = "10000000-0000-0000-0000-000000000002";
@@ -241,7 +242,8 @@ export async function fixture(
           };
           if (b.p_id) {
             const old = variants.find((v) => v.id === b.p_id);
-            expect(b.p_expected).toEqual(old);
+            if (!isDeepStrictEqual(b.p_expected, old))
+              return json({ code: "P0001", message: "EDIT_CONFLICT" }, 400);
             variants = variants.map((v) => (v.id === b.p_id ? row : v));
           } else {
             variants.push(row);
@@ -287,6 +289,8 @@ export async function fixture(
           return json(true);
         }
         if (name === "admin_save_images") {
+          if (!isDeepStrictEqual(b.p_expected, imageRows))
+            return json({ code: "P0001", message: "EDIT_CONFLICT" }, 400);
           imageRows = b.p_rows.map(
             (r: Record<string, unknown>, position: number) => ({
               ...r,

@@ -46,7 +46,8 @@ export function useAdminNavigation() {
   const previous = useRef(location.hash),
     dirty = useRef(false),
     position = useRef(0),
-    returning = useRef(false);
+    returning = useRef(false),
+    approvedTarget = useRef<string | null>(null);
   const setDirty = useCallback((value: boolean) => {
     dirty.current = value;
   }, []);
@@ -64,11 +65,16 @@ export function useAdminNavigation() {
       location.href,
     );
     function approve(target: string) {
-      if (!dirty.current || context(target) === context(previous.current))
-        return true;
+      if (context(target) === context(previous.current)) return true;
+      const inFlight = Boolean(
+        document.querySelector('[data-admin-saving="true"]'),
+      );
+      if (!dirty.current && !inFlight) return true;
       if (
         !window.confirm(
-          "Tenés cambios sin guardar. ¿Querés descartarlos y continuar?",
+          inFlight
+            ? "Hay una operación en curso. Si salís, puede completarse igual. ¿Querés continuar?"
+            : "Tenés cambios sin guardar. ¿Querés descartarlos y continuar?",
         )
       )
         return false;
@@ -95,15 +101,19 @@ export function useAdminNavigation() {
         url.pathname !== location.pathname
       ) {
         if (dirty.current && !approve(url.href)) e.preventDefault();
-      } else if (url.hash !== location.hash && !approve(url.hash))
-        e.preventDefault();
+      } else if (url.hash !== location.hash) {
+        if (!approve(url.hash)) e.preventDefault();
+        else approvedTarget.current = url.hash;
+      }
     }
     function change(e: HashChangeEvent) {
       const target = location.hash,
         incoming = readPosition();
+      const alreadyApproved = approvedTarget.current === target;
+      approvedTarget.current = null;
       if (returning.current) {
         returning.current = false;
-      } else if (!approve(target)) {
+      } else if (!alreadyApproved && !approve(target)) {
         // Run before the public router: cancelling must not unmount the editor.
         e.stopImmediatePropagation();
         if (incoming !== null && incoming !== position.current) {
@@ -130,7 +140,10 @@ export function useAdminNavigation() {
       setHash(target);
     }
     function unload(e: BeforeUnloadEvent) {
-      if (dirty.current) {
+      if (
+        dirty.current ||
+        document.querySelector('[data-admin-saving="true"]')
+      ) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -146,6 +159,8 @@ export function useAdminNavigation() {
   }, []);
   const navigate = useCallback((target: string, replace = false) => {
     if (replace) {
+      // A confirmed save replaces its creation URL; no unsaved operation is discarded.
+      approvedTarget.current = target;
       history.replaceState(history.state, "", target);
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     } else location.hash = target;

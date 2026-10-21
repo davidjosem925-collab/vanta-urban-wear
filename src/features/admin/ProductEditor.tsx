@@ -108,7 +108,10 @@ export function ProductEditor({
     ["revision", "Revisar y publicar"],
   ];
   return (
-    <section data-admin-dirty={isDirty ? "true" : "false"}>
+    <section
+      data-admin-dirty={isDirty ? "true" : "false"}
+      data-admin-saving={busy ? "true" : "false"}
+    >
       <a className="admin-back" href={backHref}>
         ← {stockOnly ? "Volver a stock" : "Volver a productos"}
       </a>
@@ -184,7 +187,7 @@ export function ProductEditor({
         <GeneralInformation
           product={product}
           categories={data.categories}
-          busy={busy || !ready}
+          busy={busy || loading || !ready}
           execute={execute}
           onSaved={onSaved}
           onDirty={(v) => changed("general", v)}
@@ -200,7 +203,7 @@ export function ProductEditor({
             <Photos
               product={product}
               data={data}
-              busy={busy || !ready}
+              busy={busy || loading || !ready}
               execute={execute}
               refresh={refresh}
               onDirty={(v) => changed("photos", v)}
@@ -215,7 +218,7 @@ export function ProductEditor({
             <Combinations
               product={product}
               variants={data.variants}
-              busy={busy || !ready}
+              busy={busy || loading || !ready}
               execute={execute}
               refresh={refresh}
               onDirty={(v) => changed("combinations", v)}
@@ -230,7 +233,7 @@ export function ProductEditor({
               product={product}
               data={data}
               pending={pending}
-              busy={busy || !ready}
+              busy={busy || loading || !ready}
               refresh={refresh}
               onAdjust={onAdjust}
               onDirty={(v) => changed("stock", v)}

@@ -31,6 +31,7 @@ export function Photos({
   confirm: RequestConfirm;
 }) {
   const [alts, setAlts] = useState<Record<string, string>>({}),
+    [bases, setBases] = useState<Record<string, string>>({}),
     [fileDirty, setFileDirty] = useState(false),
     [progress, setProgress] = useState<number | null>(null);
   const form = useRef<HTMLFormElement>(null);
@@ -55,6 +56,11 @@ export function Photos({
     const next = { ...alts };
     delete next[path];
     setAlts(next);
+    setBases((old) => {
+      const next = { ...old };
+      delete next[path];
+      return next;
+    });
     onDirty(fileDirty || Object.keys(next).length > 0);
   }
   return (
@@ -101,6 +107,14 @@ export function Photos({
                 e.preventDefault();
                 void execute(async () => {
                   const alt = (alts[im.storage_path] ?? im.alt).trim();
+                  if (
+                    bases[im.storage_path] !== undefined &&
+                    bases[im.storage_path] !== im.alt &&
+                    alt !== im.alt
+                  )
+                    throw new Error(
+                      "La descripción guardada cambió. Revisá la actual antes de reemplazarla.",
+                    );
                   await save(
                     data.images.map((i) =>
                       group(im.storage_path).some((g) => g.id === i.id)
@@ -116,8 +130,14 @@ export function Photos({
               <label>
                 Descripción de la foto
                 <input
+                  disabled={busy}
                   value={alts[im.storage_path] ?? im.alt}
                   onChange={(e) => {
+                    setBases((old) =>
+                      old[im.storage_path] !== undefined
+                        ? old
+                        : { ...old, [im.storage_path]: im.alt },
+                    );
                     setAlts({ ...alts, [im.storage_path]: e.target.value });
                     onDirty(true);
                   }}
@@ -133,6 +153,27 @@ export function Photos({
                 Guardar descripción
               </button>
             </form>
+            {bases[im.storage_path] !== undefined &&
+              bases[im.storage_path] !== im.alt && (
+                <div className="admin-query-warning">
+                  <p>La descripción guardada es: {im.alt}</p>
+                  <button
+                    type="button"
+                    className="admin-text-action"
+                    disabled={busy}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "¿Descartar tu descripción sin guardar y usar la actual?",
+                        )
+                      )
+                        clearAlt(im.storage_path);
+                    }}
+                  >
+                    Usar descripción guardada
+                  </button>
+                </div>
+              )}
             <div className="admin-photo-actions">
               <button
                 className="button secondary"
@@ -195,6 +236,22 @@ export function Photos({
           </article>
         ))}
       </div>
+      {Object.keys(alts)
+        .filter((path) => !photos.some((im) => im.storage_path === path))
+        .map((path) => (
+          <div className="admin-query-warning" key={path}>
+            <p>
+              Una foto que estabas editando ya no está en la galería. Tu
+              descripción pendiente: {alts[path]}
+            </p>
+            <button
+              className="admin-text-action"
+              onClick={() => clearAlt(path)}
+            >
+              Descartar descripción de la foto retirada
+            </button>
+          </div>
+        ))}
       {!photos.length && (
         <div className="admin-empty">
           <span className="admin-empty-symbol" aria-hidden="true">
@@ -217,6 +274,10 @@ export function Photos({
             file = f.get("photo") as File,
             alt = String(f.get("alt")).trim();
           void execute(async () => {
+            if (!alt)
+              throw new Error(
+                "Agregá una descripción breve de la fotografía antes de subirla.",
+              );
             if (photos.length >= 12)
               throw new Error("La galería admite hasta 12 fotografías.");
             setProgress(0);

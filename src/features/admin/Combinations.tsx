@@ -25,7 +25,7 @@ export function Combinations({
     [sizes, setSizes] = useState<string[]>([]),
     [extra, setExtra] = useState(""),
     [review, setReview] = useState(false),
-    [editing, setEditing] = useState<string | null>(null),
+    [editingSnapshot, setEditingSnapshot] = useState<AdminVariant | null>(null),
     [code, setCode] = useState(""),
     [enabled, setEnabled] = useState(true),
     [created, setCreated] = useState<AdminVariant[]>([]);
@@ -34,6 +34,18 @@ export function Combinations({
     ...variants.map((v) => created.find((x) => x.id === v.id) ?? v),
     ...created.filter((v) => !variants.some((x) => x.id === v.id)),
   ];
+  const editing = editingSnapshot?.id ?? null;
+  const setEditing = (id: string | null) =>
+    setEditingSnapshot(id ? (all.find((v) => v.id === id) ?? null) : null);
+  const currentEditing = variants.find((v) => v.id === editing);
+  const changedEditing =
+    editingSnapshot &&
+    currentEditing &&
+    ["sku", "size", "color", "active"].some(
+      (key) =>
+        editingSnapshot[key as keyof AdminVariant] !==
+        currentEditing[key as keyof AdminVariant],
+    );
   const colors = [...new Set(all.map((v) => v.color))],
     selected = colors.includes(chosen) ? chosen : (colors[0] ?? "");
   const canonical =
@@ -53,12 +65,27 @@ export function Combinations({
   }
   return (
     <section className="admin-card">
-      <div className="admin-panel-heading">
-        <h3>Talles y colores</h3>
-        <p className="admin-muted">
-          Elegí un color para ver sus talles. Cambiar disponibilidad conserva su
-          código y sus pedidos.
-        </p>
+      <div className="admin-toolbar admin-panel-heading">
+        <div>
+          <h3>Talles y colores</h3>
+          <p className="admin-muted">
+            Elegí un color para ver sus talles. Cambiar disponibilidad conserva
+            su código y sus pedidos.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="admin-text-action"
+          disabled={busy}
+          onClick={() =>
+            void refresh().then((ok) => {
+              if (ok) setCreated([]);
+            })
+          }
+          aria-label="Actualizar talles y colores"
+        >
+          Actualizar
+        </button>
       </div>
       {colors.length > 0 ? (
         <>
@@ -84,16 +111,20 @@ export function Combinations({
               .map((v) => (
                 <div className="admin-size-row" key={v.id}>
                   <strong>{v.size}</strong>
-                  <span className="admin-badge">{v.active ? "Sí" : "No"}</span>
+                  <span className="admin-badge">
+                    <span className="admin-sr-only">
+                      Disponible para la venta:{" "}
+                    </span>
+                    {v.active ? "Sí" : "No"}
+                  </span>
                   <button
                     className="admin-text-action"
                     disabled={busy}
                     onClick={() => {
                       if (
                         editing &&
-                        (code !== all.find((x) => x.id === editing)?.sku ||
-                          enabled !==
-                            all.find((x) => x.id === editing)?.active) &&
+                        (code !== editingSnapshot?.sku ||
+                          enabled !== editingSnapshot?.active) &&
                         !window.confirm("¿Descartar la edición de este talle?")
                       )
                         return;
@@ -119,7 +150,7 @@ export function Combinations({
           className="admin-inline-editor"
           onSubmit={(e) => {
             e.preventDefault();
-            const v = all.find((v) => v.id === editing)!;
+            const v = editingSnapshot!;
             void execute(async () => {
               const saved = await rpc<AdminVariant>("admin_save_variant", {
                 p_id: v.id,
@@ -144,13 +175,46 @@ export function Combinations({
           }}
         >
           <h4>
-            {all.find((v) => v.id === editing)?.color} · talle{" "}
-            {all.find((v) => v.id === editing)?.size}
+            {editingSnapshot?.color} · talle {editingSnapshot?.size}
           </h4>
           <p className="admin-muted">
             El talle y el color de una combinación existente se conservan para
             proteger su historial.
           </p>
+          {changedEditing && currentEditing && (
+            <div className="admin-query-warning">
+              <p>
+                Los datos guardados cambiaron: {currentEditing.color} ·{" "}
+                {currentEditing.size} · {currentEditing.sku} ·{" "}
+                {currentEditing.active
+                  ? "Disponible para la venta"
+                  : "No disponible para la venta"}
+                .
+              </p>
+              <button
+                type="button"
+                className="admin-text-action"
+                disabled={busy}
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      "¿Descartar tu edición sin guardar y usar los datos actuales?",
+                    )
+                  )
+                    return;
+                  setEditingSnapshot(currentEditing);
+                  setCode(currentEditing.sku);
+                  setEnabled(currentEditing.active);
+                  onDirty(Boolean(color || sizes.length));
+                  success(
+                    "Datos actuales cargados para editar. No se aplicaron cambios.",
+                  );
+                }}
+              >
+                Usar datos guardados
+              </button>
+            </div>
+          )}
           <fieldset disabled={busy}>
             <label>
               Código interno
@@ -182,8 +246,8 @@ export function Combinations({
                 className="admin-text-action"
                 onClick={() => {
                   if (
-                    (code !== all.find((v) => v.id === editing)?.sku ||
-                      enabled !== all.find((v) => v.id === editing)?.active) &&
+                    (code !== editingSnapshot?.sku ||
+                      enabled !== editingSnapshot?.active) &&
                     !window.confirm("¿Descartar los cambios de este talle?")
                   )
                     return;

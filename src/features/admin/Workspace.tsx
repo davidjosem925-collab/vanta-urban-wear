@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { connected, rows, rpc } from "./client";
+import { AdminError, connected, rows, rpc } from "./client";
 import { ProductEditor } from "./ProductEditor";
 import { Orders } from "./Orders";
-import { useAdminNavigation } from "./navigation";
+import { adminView, useAdminNavigation } from "./navigation";
 import { imagePreviews } from "./previews";
 import { originals } from "./ux";
 import {
@@ -164,7 +164,10 @@ export function AdminWorkspace({
         p_key: a.key,
       });
     } catch (e) {
-      if ((e as Error).message.startsWith("El ajuste dejaría")) {
+      if (
+        (e as Error).message.startsWith("El ajuste dejaría") ||
+        (e instanceof AdminError && e.kind === "validation")
+      ) {
         try {
           sessionStorage.removeItem(pendingKey);
         } catch {
@@ -231,6 +234,7 @@ export function AdminWorkspace({
     });
     return `#/admin/${view.area}?${q}`;
   }
+  const renderedGeneration = generation.current;
   return (
     <div className="admin-layout">
       <nav className="admin-nav" aria-label="Administración">
@@ -320,6 +324,13 @@ export function AdminWorkspace({
             onDirty={trackDirty}
             revision={revision}
             onSaved={(p, message) => {
+              const current = adminView(location.hash);
+              if (
+                renderedGeneration !== generation.current ||
+                current.area !== view.area ||
+                current.id !== view.id
+              )
+                return;
               setProduct(p);
               if (view.id === "nuevo") {
                 setDirty(false);

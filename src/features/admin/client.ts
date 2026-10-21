@@ -64,6 +64,14 @@ export function safeError(error: unknown): Error {
     return new AdminError(
       "El ajuste dejaría stock inferior a lo reservado o fuera de rango.",
     );
+  if (
+    ["23514", "22P02", "22003"].includes(e?.code ?? "") ||
+    (e?.code === "P0001" && e?.message?.includes("INVALID_REQUEST"))
+  )
+    return new AdminError(
+      "Revisá los campos: falta algún dato o está fuera de los límites permitidos.",
+      "validation",
+    );
   if (e?.code === "23503")
     return new AdminError("La relación seleccionada no está disponible.");
   return new AdminError(

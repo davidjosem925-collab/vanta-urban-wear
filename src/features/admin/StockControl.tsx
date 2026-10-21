@@ -64,11 +64,22 @@ export function StockControl({
   }
   return (
     <section className="admin-card">
-      <div className="admin-panel-heading">
-        <h3>Control de stock</h3>
-        <p className="admin-muted">
-          Elegí un talle para agregar o quitar unidades físicas.
-        </p>
+      <div className="admin-toolbar admin-panel-heading">
+        <div>
+          <h3>Control de stock</h3>
+          <p className="admin-muted">
+            Elegí un talle para agregar o quitar unidades físicas.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="admin-text-action"
+          disabled={busy}
+          onClick={() => void refresh()}
+          aria-label="Actualizar cantidades de stock"
+        >
+          Actualizar
+        </button>
       </div>
       <details className="admin-stock-help">
         <summary>¿Qué significa cada cantidad?</summary>
@@ -149,15 +160,18 @@ export function StockControl({
                       {!v.active && <small>No disponible para la venta</small>}
                     </strong>
                     <span>
-                      <small>Físico</small>
+                      <span className="admin-sr-only">Stock físico: </span>
+                      <small aria-hidden="true">Físico</small>
                       {i?.on_hand ?? "—"}
                     </span>
                     <span>
-                      <small>Reservado</small>
+                      <span className="admin-sr-only">Reservado: </span>
+                      <small aria-hidden="true">Reservado</small>
                       {i?.reserved ?? "—"}
                     </span>
                     <span>
-                      <small>Disponible</small>
+                      <span className="admin-sr-only">Disponible: </span>
+                      <small aria-hidden="true">Disponible</small>
                       {i ? i.on_hand - i.reserved : "—"}
                     </span>
                     <button
@@ -179,7 +193,7 @@ export function StockControl({
           className="admin-stock-editor"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!result) return;
+            if (!result || reason.trim().length < 3) return;
             const a = {
               key: crypto.randomUUID(),
               variant: variant.id,
@@ -255,6 +269,11 @@ export function StockControl({
             <label>
               Motivo del cambio
               <input
+                aria-label="Motivo del cambio"
+                aria-describedby="admin-stock-reason-help admin-stock-reason-error"
+                aria-invalid={
+                  (reason.length > 0 && reason.trim().length < 3) || undefined
+                }
                 value={reason}
                 onChange={(e) => {
                   setReason(e.target.value);
@@ -265,9 +284,18 @@ export function StockControl({
                 required
                 placeholder="Ej.: Ingreso de prendas o recuento de depósito"
               />
-              <span className="admin-field-help">
+              <span id="admin-stock-reason-help" className="admin-field-help">
                 Queda registrado en el historial. No incluyas datos personales.
               </span>
+              {reason.length > 0 && reason.trim().length < 3 && (
+                <span
+                  id="admin-stock-reason-error"
+                  className="admin-field-help"
+                  role="alert"
+                >
+                  Escribí al menos tres caracteres en el motivo.
+                </span>
+              )}
             </label>
             <p id="stock-result" className="admin-stock-result" role="status">
               {!quantity
@@ -281,7 +309,10 @@ export function StockControl({
                       : "No hay suficientes unidades físicas. Reducí la cantidad."
                     : "Ingresá una cantidad entera entre 1 y 1000, dentro del stock permitido."}
             </p>
-            <button className="button primary" disabled={!result}>
+            <button
+              className="button primary"
+              disabled={!result || reason.trim().length < 3}
+            >
               Revisar cambio de stock
             </button>
           </fieldset>

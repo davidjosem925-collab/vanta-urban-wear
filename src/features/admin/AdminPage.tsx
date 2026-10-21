@@ -153,10 +153,15 @@ export function AdminPage() {
     }
   }
   async function logout() {
+    const inFlight = Boolean(
+      document.querySelector('[data-admin-saving="true"]'),
+    );
     if (
-      document.querySelector('[data-admin-dirty="true"]') &&
+      (inFlight || document.querySelector('[data-admin-dirty="true"]')) &&
       !window.confirm(
-        "Tenés cambios sin guardar. ¿Querés descartarlos y cerrar sesión?",
+        inFlight
+          ? "Hay una operación en curso y puede completarse aunque cierres sesión. ¿Querés continuar?"
+          : "Tenés cambios sin guardar. ¿Querés descartarlos y cerrar sesión?",
       )
     )
       return;
