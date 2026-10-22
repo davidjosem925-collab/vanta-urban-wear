@@ -1,6 +1,7 @@
 # Etapa 8 — diagnóstico y diseño propuesto
 
-Estado: **fase 1, solo documentación**. Base `main` en
+Estado de la entrega original: **fase 1, solo documentación**.
+El backend de fase 2 se documenta en [stage-8-payments-backend.md](stage-8-payments-backend.md). Base `main` en
 `f7aac036cb74f8f9541c5ba9c4bb534358aecb50` (PR #9 fusionada).
 Rama `feat/stage-8-payments-email`. No se implementan pagos, envíos de correo,
 migraciones ni cambios de configuración en esta entrega inicial.

@@ -27,7 +27,8 @@
     "test:admin:auth": "node scripts/test-admin-auth.mjs",
     "test:admin:passkeys": "node scripts/test-admin-auth.mjs --passkeys",
     "test:admin:email": "node scripts/test-admin-auth.mjs --email",
-    "test:e2e:admin-email": "playwright test --config playwright.email.config.ts"
+    "test:e2e:admin-email": "playwright test --config playwright.email.config.ts",
+    "test:payments:postgres": "node scripts/test-mp-postgres.mjs"
   },
   "dependencies": {
     "react": "^19.1.0",

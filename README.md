@@ -160,3 +160,10 @@ No aplicar de nuevo las migraciones anteriores ni publicar automáticamente.
 El modo nuevo está apagado por defecto y su migración no está aplicada al proyecto
 alojado. No ejecutar migraciones automáticamente: requiere aprobación del cambio
 de seguridad, configuración de correo y aceptación real del propietario.
+
+### Etapa 8 — Backend de pagos de prueba (fase 2)
+
+Checkout Pro / Orders API desde Edge Functions, webhook firmado, conciliación
+idempotente y reservas existentes. Apagado por defecto; sin despliegue ni SQL
+remoto, interfaz de pago o correos de confirmación en esta fase.
+[Configuración manual, pruebas y reversión](docs/stage-8-payments-backend.md).
