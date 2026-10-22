@@ -39,6 +39,32 @@ jobs:
       - run: npm run images:check
       - name: Preparation must leave tracked files untouched
         run: git diff --exit-code
+  tests-portability:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # Unit tests must not depend on a developer's deployed feature flags.
+      VITE_SUPABASE_URL: https://vanta-cart-fixture.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_unit_fixture_only
+      VITE_DEMO_ORDERS_ENABLED: "true"
+      VITE_TURNSTILE_SITE_KEY: test-public-sitekey
+      VITE_ADMIN_EMAIL_ACCESS_ENABLED: "true"
+    steps:
+      - run: git config --global core.autocrlf true
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run demo:check
+      - run: npm run demo:prepare
+      - run: git diff --exit-code
+
   orders-postgres:
     runs-on: ubuntu-latest
     services:

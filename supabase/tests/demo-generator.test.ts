@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { sameGeneratedText } from "../../scripts/generated-image-file.mjs";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -27,7 +28,7 @@ describe('Generador permanente del seed para SQL Editor',()=>{
     vi.spyOn(console,'log').mockImplementation(()=>{});
     runGenerator(['--scope=extension',`--confirm-project=${PROJECT_REF}`,`--output=${output}`]);
     expect(readFileSync(output,'utf8')).toBe(buildDemoSql(selectCatalog('extension'),PROJECT_REF));
-    expect(readFileSync(resolve(ROOT,'supabase/seeds/catalog.extension.sql'),'utf8')).toBe(buildDemoSql(selectCatalog('extension')));
+    expect(sameGeneratedText(readFileSync(resolve(ROOT,'supabase/seeds/catalog.extension.sql'),'utf8'),buildDemoSql(selectCatalog('extension')))).toBe(true);
   });
   it('rechaza ámbitos desconocidos antes de generar SQL',()=>{
     expect(()=>runGenerator(['--scope=otro'])).toThrow(/Ámbito/);
