@@ -12,7 +12,7 @@ import {
   orderActions,
   paymentLabel,
   type AdminPayment,
-} from "./orderPayments";
+} from "./paymentModel";
 import type { DemoOrder } from "./model";
 const calls = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock("./client", () => ({ rpc: calls.rpc }));

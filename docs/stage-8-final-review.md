@@ -17,6 +17,8 @@ Las transferencias podían mostrar pago pendiente después de que cron venciera 
 
 El CI anterior incluía `notifications.spec.ts` dentro de la configuración general con correo deshabilitado. Los logs identificaron cinco fallas en el texto de privacidad esperado. La suite de correo ahora se excluye de esa configuración y se ejecuta separadamente con sus flags, manteniendo todas sus aserciones.
 
+El CI de Windows también detectó una colisión entre `OrderPayments.tsx` (componente) y `orderPayments.ts` (modelo): en un sistema de archivos sin distinción de mayúsculas se resolvía el modelo al importar el componente. El modelo se renombró a `paymentModel.ts` y una prueba verifica que no reaparezcan stems de módulos ambiguos.
+
 Durante el desarrollo se corrigieron fixtures de expiración que no respetaban la restricción exacta de 60 minutos, referencias del harness local de locks, una prueba que usaba por defecto un pago pendiente cuando esperaba aprobación y opciones TypeScript inválidas de Testing Library. No se relajaron las restricciones para hacer pasar esos casos.
 
 ## Seguridad conservada
@@ -29,7 +31,7 @@ Resend continúa desacoplado mediante outbox: una caída del proveedor no modifi
 
 ## Evidencia y límites
 
-- 669 pruebas unitarias/SQL/integración en 50 archivos (19 nuevas en fase 5).
+- 670 pruebas unitarias/SQL/integración en 51 archivos (20 nuevas en fase 5).
 - PostgreSQL 17 real, desechable: 34 escenarios entre pedidos (11), pagos (10), correos y administración (13). Concurrencia real entre conexiones, espera por inventario, idempotencia, cancelación/aprobación, vencimiento, permisos y reversión.
 - Auth local real: suites `auth`, `email`, `passkeys`; JWT firmados y PostgREST. La última usa un autenticador virtual, no biometría física. No SMTP de Auth alojado.
 - Navegador: 15 casos nuevos de administración en 1440, 820, 375, 393 y 320 px; transferencias, respuesta perdida, teclado/foco, estados e imposibilidad de aprobar MP. Regresiones generales y de checkout/correo se registran en el CI de la PR; no se declaran aprobadas mientras estén en curso.

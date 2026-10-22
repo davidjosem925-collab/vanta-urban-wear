@@ -5,7 +5,7 @@ import {
   type OrderPayments as Data,
   orderActions,
   paymentLabel,
-} from "./orderPayments";
+} from "./paymentModel";
 import { Confirm } from "./Confirm";
 import { friendly } from "./ux";
 const notices: Record<string, string> = {

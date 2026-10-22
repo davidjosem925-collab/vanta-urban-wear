@@ -13,7 +13,7 @@ import {
   type OrderPayments as PaymentData,
   emptyPayments,
   paymentLabel,
-} from "./orderPayments";
+} from "./paymentModel";
 export function Orders({
   onUnauthorized,
   selectedId,
