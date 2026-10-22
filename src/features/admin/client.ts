@@ -58,6 +58,22 @@ export function safeError(error: unknown): Error {
   const e = error as { code?: string; message?: string };
   if (e?.code === "42501" || e?.message?.includes("FORBIDDEN"))
     return new AdminError("Acceso no autorizado. Volvé a verificar tu acceso.");
+  if (e?.message?.includes("PROVIDER_CONFIRMATION_REQUIRED"))
+    return new AdminError(
+      "Mercado Pago solo puede confirmarse mediante verificación del proveedor.",
+    );
+  if (e?.message?.includes("PAYMENT_CONFLICT"))
+    return new AdminError(
+      "El pago no permite esta acción. Actualizá el pedido y revisá su estado.",
+    );
+  if (e?.message?.includes("IDEMPOTENCY_CONFLICT"))
+    return new AdminError(
+      "La operación no coincide con el intento guardado. Consultá el pedido antes de continuar.",
+    );
+  if (e?.message?.includes("INVALID_TRANSITION"))
+    return new AdminError(
+      "El estado actual no permite ese cambio. Actualizá el pedido.",
+    );
   if (e?.code === "23505")
     return new AdminError(
       "Esa dirección, código interno o combinación ya existe. Revisá los datos.",

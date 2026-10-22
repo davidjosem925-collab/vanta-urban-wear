@@ -1283,3 +1283,17 @@
 .admin-account-security .button {
   white-space: normal;
 }
+
+.admin-payment-detail {
+  border-top: 1px solid #333;
+  margin-top: 24px;
+  padding-top: 8px;
+  min-width: 0;
+}
+.admin-payment-detail dd,
+.admin-payment-detail p {
+  overflow-wrap: anywhere;
+}
+.admin-payment-detail .button {
+  white-space: normal;
+}

@@ -2,7 +2,12 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  testIgnore: ["**/orders.spec.ts", "**/admin-email.spec.ts", "**/payments.spec.ts"],
+  testIgnore: [
+    "**/orders.spec.ts",
+    "**/admin-email.spec.ts",
+    "**/payments.spec.ts",
+    "**/notifications.spec.ts",
+  ],
   fullyParallel: true,
   workers: 2,
   forbidOnly: Boolean(process.env.CI),

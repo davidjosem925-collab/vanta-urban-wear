@@ -166,6 +166,7 @@ try {
     "202610230001_mp_test_backend.sql",
     "202610230002_checkout_payments.sql",
     "202610230003_transactional_email.sql",
+    "202610230004_admin_payments.sql",
   ])
     await sql(readFileSync(`supabase/migrations/${name}`, "utf8"));
   await sql(`update public.mp_test_config set enabled=true,seller_id='123',application_id='456';
@@ -349,6 +350,9 @@ try {
     "f",
   );
   await reset();
+  await sql(
+    readFileSync("supabase/operations/stage-8-admin-rollback.sql", "utf8"),
+  );
   await sql(
     readFileSync("supabase/operations/stage-8-email-rollback.sql", "utf8"),
   );

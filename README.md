@@ -181,3 +181,10 @@ manuales; no se realizó ningún cambio remoto.
 Outbox privada, Resend desde Edge Functions, plantillas HTML/texto e idempotencia.
 Desactivado por defecto; sin envíos ni despliegues remotos realizados.
 Ver [configuración, activación manual, pruebas y reversión](docs/stage-8-transactional-email.md).
+
+### Etapa 8 — Administración y activación (fase 5)
+
+Estados de pedido y pago separados; transferencia ficticia con confirmación,
+idempotencia y auditoría; Mercado Pago se aprueba exclusivamente por evidencia
+verificada del proveedor. [Guía unificada de activación y reversión](docs/stage-8-activation.md).
+Sin despliegues ni migraciones remotas realizadas.

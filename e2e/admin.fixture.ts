@@ -308,6 +308,16 @@ export async function fixture(
         uploads.push(path);
         return json({ Key: path, Id: id });
       }
+      if (path === "/rest/v1/rpc/admin_demo_order_payments")
+        return json([
+          {
+            order_id: id,
+            payments: [],
+            events: [],
+            actions: [],
+            notifications: [],
+          },
+        ]);
       if (path.startsWith("/rest/v1/rpc/")) {
         const name = path.split("/").at(-1),
           b = req.postDataJSON() ?? {};

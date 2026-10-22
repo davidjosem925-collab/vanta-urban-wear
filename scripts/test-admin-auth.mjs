@@ -218,6 +218,7 @@ try {
     "202610230001_mp_test_backend.sql",
     "202610230002_checkout_payments.sql",
     "202610230003_transactional_email.sql",
+    "202610230004_admin_payments.sql",
   ])
     sql(readFileSync(`supabase/migrations/${file}`, "utf8"));
   const category = randomUUID();
@@ -353,6 +354,27 @@ try {
   assert.equal(await (await call(aal2, "is_admin")).json(), true);
   assert.equal((await call(aal2, "mp_test_settings")).status, 403);
   assert.equal((await call(aal2, "demo_email_claim")).status, 403);
+  assert.deepEqual(
+    await (
+      await call(aal2, "admin_demo_order_payments", { p_orders: [] })
+    ).json(),
+    [],
+  );
+  assert.equal(
+    (
+      await call(jwt("service_role"), "admin_demo_order_payments", {
+        p_orders: [],
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await call(aal1, "admin_demo_order_payments", { p_orders: [] })).status,
+    400,
+  );
+  console.log(
+    "PASS active signed administrator can read safe payment metadata; AAL1 legacy and service token cannot",
+  );
   assert.equal(
     (
       await call(aal2, "demo_email_create_order", {
