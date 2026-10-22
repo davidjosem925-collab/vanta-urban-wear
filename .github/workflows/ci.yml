@@ -18,6 +18,8 @@ jobs:
       - run: npm run test:e2e
       - run: npm run test:e2e:admin-email
       - run: npm run test:e2e:orders
+      - run: npm run test:e2e:payments
+      - run: npm run test:e2e:notifications
   images-portability:
     strategy:
       fail-fast: false
@@ -50,6 +52,8 @@ jobs:
       VITE_SUPABASE_URL: https://vanta-cart-fixture.supabase.co
       VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_unit_fixture_only
       VITE_DEMO_ORDERS_ENABLED: "true"
+      VITE_MP_CHECKOUT_ENABLED: "true"
+      VITE_DEMO_EMAIL_ENABLED: "true"
       VITE_TURNSTILE_SITE_KEY: test-public-sitekey
       VITE_ADMIN_EMAIL_ACCESS_ENABLED: "true"
     steps:
@@ -83,6 +87,12 @@ jobs:
         with:
           node-version: 24
       - run: npm run test:orders:postgres
+        env:
+          VANTA_TEST_PG_CONTAINER: ${{ job.services.postgres.id }}
+      - run: npm run test:payments:postgres
+        env:
+          VANTA_TEST_PG_CONTAINER: ${{ job.services.postgres.id }}
+      - run: npm run test:emails:postgres
         env:
           VANTA_TEST_PG_CONTAINER: ${{ job.services.postgres.id }}
 

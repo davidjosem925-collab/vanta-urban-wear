@@ -2,7 +2,12 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  testIgnore: ["**/orders.spec.ts", "**/admin-email.spec.ts"],
+  testIgnore: [
+    "**/orders.spec.ts",
+    "**/admin-email.spec.ts",
+    "**/payments.spec.ts",
+    "**/notifications.spec.ts",
+  ],
   fullyParallel: true,
   workers: 2,
   forbidOnly: Boolean(process.env.CI),
@@ -58,7 +63,9 @@ export default defineConfig({
       VITE_ADMIN_DEVICE_MFA_ENABLED: "true",
       VITE_ADMIN_RP_ID: "localhost",
       VITE_ADMIN_EMAIL_ACCESS_ENABLED: "false",
+      VITE_DEMO_EMAIL_ENABLED: "false",
       VITE_DEMO_ORDERS_ENABLED: "false",
+      VITE_MP_CHECKOUT_ENABLED: "false",
       VITE_TURNSTILE_SITE_KEY: "",
     },
   },

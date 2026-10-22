@@ -11,6 +11,11 @@ const handler = makeHandler(
     challengeSecret: env("TURNSTILE_SECRET_KEY"),
     challengeHostname: env("DEMO_CHALLENGE_HOSTNAME"),
     actorSecret: env("DEMO_ACTOR_SECRET"),
+    notifications: {
+      enabled: env("DEMO_EMAIL_ENABLED") === "true",
+      allowed: env("DEMO_EMAIL_ALLOWED_RECIPIENTS"),
+      encryption: env("DEMO_EMAIL_ENCRYPTION_KEY"),
+    },
   },
   createRpc(url, key),
   fetch,

@@ -11,6 +11,7 @@ import { App } from "../../app/App";
 import { fixtureService, product } from "../../test/fixtures";
 import { STORAGE_KEY } from "../cart/model";
 import type { OrderService } from "../orders/service";
+import type { PaymentService } from "../payments/service";
 
 // This suite exercises the local-only checkout. Never inherit deployed order
 // configuration or contact an Edge Function from a unit test.
@@ -25,6 +26,13 @@ const localOrders: OrderService = {
   }),
 };
 
+// Legacy checkout cases must not inherit a developer's phase-3 flag.
+const localPayments: PaymentService = {
+  enabled: false,
+  request: vi.fn(async () => {
+    throw new Error("Unexpected payment request");
+  }),
+};
 function route(hash: string) {
   act(() => {
     window.history.replaceState(null, "", `/${hash}`);
@@ -50,7 +58,13 @@ function seed() {
 async function start() {
   seed();
   route("#/checkout");
-  const app = render(<App service={fixtureService()} orders={localOrders} />);
+  const app = render(
+    <App
+      service={fixtureService()}
+      orders={localOrders}
+      payments={localPayments}
+    />,
+  );
   await screen.findByLabelText("Nombre");
   await waitFor(() =>
     expect(
@@ -160,7 +174,13 @@ describe("Checkout integrado con el carrito existente", () => {
     "bloquea acceso vacío en %s",
     async (hash) => {
       route(hash);
-      render(<App service={fixtureService()} orders={localOrders} />);
+      render(
+        <App
+          service={fixtureService()}
+          orders={localOrders}
+          payments={localPayments}
+        />,
+      );
       expect(
         await screen.findByRole("heading", {
           name: "Tu selección está vacía.",
@@ -273,7 +293,13 @@ describe("Checkout integrado con el carrito existente", () => {
     pickup();
     await review();
     app.unmount();
-    render(<App service={fixtureService()} orders={localOrders} />);
+    render(
+      <App
+        service={fixtureService()}
+        orders={localOrders}
+        payments={localPayments}
+      />,
+    );
     expect(
       await screen.findByText(/Completá tus datos, entrega y método/),
     ).toBeVisible();
@@ -301,7 +327,9 @@ describe("Checkout integrado con el carrito existente", () => {
         return current;
       },
     });
-    render(<App service={service} orders={localOrders} />);
+    render(
+      <App service={service} orders={localOrders} payments={localPayments} />,
+    );
     await screen.findByLabelText("Nombre");
     contact();
     pickup();
@@ -361,16 +389,14 @@ it.each([true, false])(
       variants: [{ ...product.variants[0], id: variantId }],
     };
     const confirm = accepted
-      ? vi
-          .fn()
-          .mockResolvedValue({
-            reference: "20000000-0000-0000-0000-000000000001",
-            status: "pending",
-            subtotal_cents: 5000100,
-            created_at: "2026-10-20T00:00:00Z",
-            expires_at: "2026-10-20T01:00:00Z",
-            demo: true,
-          })
+      ? vi.fn().mockResolvedValue({
+          reference: "20000000-0000-0000-0000-000000000001",
+          status: "pending",
+          subtotal_cents: 5000100,
+          created_at: "2026-10-20T00:00:00Z",
+          expires_at: "2026-10-20T01:00:00Z",
+          demo: true,
+        })
       : vi.fn().mockRejectedValue(new Error("PRICE_CHANGED"));
     const orders: OrderService = {
       enabled: true,
@@ -400,6 +426,7 @@ it.each([true, false])(
       <App
         service={fixtureService({ product: async () => item })}
         orders={orders}
+        payments={localPayments}
       />,
     );
     await screen.findByLabelText("Nombre");

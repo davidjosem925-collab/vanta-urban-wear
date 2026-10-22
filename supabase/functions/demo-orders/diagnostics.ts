@@ -4,7 +4,9 @@ export const rpcOperations = [
   "demo_order_replay",
   "demo_admit_creation",
   "demo_create_order",
+  "demo_email_create_order",
   "demo_cancel_order",
+  "demo_transfer_payment",
 ] as const;
 export type RpcOperation = (typeof rpcOperations)[number];
 type Operation = RpcOperation | "request" | "configuration" | "siteverify";

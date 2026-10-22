@@ -1,3 +1,4 @@
+import { normalizeNotificationEmail } from "./notificationEmail";
 import { readPublicSupabaseConfig } from "../../lib/supabase/config";
 export type OrderPayload = {
   items: {
@@ -15,6 +16,7 @@ export type Receipt = {
   created_at: string;
   expires_at: string;
   demo: true;
+  email_requested?: boolean;
 };
 export type Attempt = {
   key: string;
@@ -24,18 +26,19 @@ export type Attempt = {
 export type OrderService = {
   enabled: boolean;
   siteKey: string;
-  confirm(a: Attempt, challenge: string): Promise<Receipt>;
+  notificationsEnabled?: boolean;
+  confirm(
+    a: Attempt,
+    challenge: string,
+    notificationEmail?: string,
+  ): Promise<Receipt>;
   recover(a: Attempt): Promise<Receipt | null>;
 };
 export class OrderRequestError extends Error {
   constructor(
     code: string,
     public readonly kind:
-      | "http"
-      | "network"
-      | "timeout"
-      | "protocol"
-      | "configuration",
+      "http" | "network" | "timeout" | "protocol" | "configuration",
     public readonly status?: number,
   ) {
     super(code);
@@ -106,6 +109,8 @@ export function receipt(value: unknown): Receipt {
   if (
     !r ||
     r.demo !== true ||
+    (r.email_requested !== undefined &&
+      typeof r.email_requested !== "boolean") ||
     !uuid.test(r.reference) ||
     ![
       "pending",
@@ -128,9 +133,20 @@ export function receipt(value: unknown): Receipt {
     created_at: r.created_at,
     expires_at: r.expires_at,
     demo: true,
+    ...(r.email_requested !== undefined
+      ? { email_requested: r.email_requested }
+      : {}),
   };
 }
 export const orderMessages: Record<string, string> = {
+  INVALID_EMAIL:
+    "Ingresá un correo válido para las notificaciones de prueba, sin espacios ni caracteres especiales en el dominio.",
+  EMAIL_DISABLED:
+    "Los correos de prueba no están habilitados en el servidor. No se creó otro pedido. Consultá el mismo intento antes de reintentar.",
+  EMAIL_NOT_CONFIGURED:
+    "No pudimos preparar las notificaciones de prueba. Conservamos el mismo intento; consultá el resultado antes de reintentar.",
+  EMAIL_RECIPIENT_UNAVAILABLE:
+    "Ese correo no está habilitado para recibir notificaciones de esta demostración. Usá una dirección de prueba autorizada por el propietario.",
   INSUFFICIENT_STOCK:
     "No hay unidades suficientes para toda la selección. Revisá el carrito.",
   PRICE_CHANGED:
@@ -229,8 +245,8 @@ export async function requestOrder(
         : "HTTP_REJECTED";
     throw new OrderRequestError(
       body.action === "recover" &&
-      response.status === 400 &&
-      code === "INVALID_REQUEST"
+        response.status === 400 &&
+        code === "INVALID_REQUEST"
         ? "RECOVERY_UNSUPPORTED"
         : code,
       "http",
@@ -250,7 +266,12 @@ export const orderService: OrderService = {
     Boolean(config) &&
     Boolean(import.meta.env.VITE_TURNSTILE_SITE_KEY),
   siteKey: import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "",
-  async confirm(a, challenge) {
+  notificationsEnabled:
+    import.meta.env.VITE_DEMO_EMAIL_ENABLED === "true" &&
+    import.meta.env.VITE_DEMO_ORDERS_ENABLED === "true" &&
+    Boolean(config) &&
+    Boolean(import.meta.env.VITE_TURNSTILE_SITE_KEY),
+  async confirm(a, challenge, notificationEmail) {
     const c = configured();
     return receipt(
       await requestOrder(c.url, c.key, {
@@ -259,6 +280,11 @@ export const orderService: OrderService = {
         capability: a.capability,
         payload: a.payload,
         challenge,
+        ...(notificationEmail !== undefined && orderService.notificationsEnabled
+          ? {
+              notification_email: normalizeNotificationEmail(notificationEmail),
+            }
+          : {}),
       }),
     );
   },

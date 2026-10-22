@@ -54,6 +54,7 @@ export async function testEmailAccess({
     "aal1",
   );
   assert.equal(await (await call(access, "is_admin")).json(), true);
+  assert.equal((await call(access, "mp_test_settings")).status, 403);
   assert.equal(
     (
       await call(access, "admin_save_product", {

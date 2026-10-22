@@ -160,3 +160,31 @@ No aplicar de nuevo las migraciones anteriores ni publicar automáticamente.
 El modo nuevo está apagado por defecto y su migración no está aplicada al proyecto
 alojado. No ejecutar migraciones automáticamente: requiere aprobación del cambio
 de seguridad, configuración de correo y aceptación real del propietario.
+
+### Etapa 8 — Backend de pagos de prueba (fase 2)
+
+Checkout Pro / Orders API desde Edge Functions, webhook firmado, conciliación
+idempotente y reservas existentes. Apagado por defecto; sin despliegue ni SQL
+remoto, interfaz de pago o correos de confirmación en esta fase.
+[Configuración manual, pruebas y reversión](docs/stage-8-payments-backend.md).
+
+### Etapa 8 — Checkout de pagos de prueba (fase 3)
+
+La integración está preparada detrás de `VITE_MP_CHECKOUT_ENABLED=false`: Mercado
+Pago Checkout Pro sandbox, transferencia ficticia y consulta de estados desde el
+servidor. No se envían correos. Ver [activación, variables, pruebas y reversión](docs/stage-8-checkout-payments.md).
+No habilitar el flag antes de revisar/aprobar las migraciones y los despliegues
+manuales; no se realizó ningún cambio remoto.
+
+### Etapa 8 — Correos transaccionales (fase 4)
+
+Outbox privada, Resend desde Edge Functions, plantillas HTML/texto e idempotencia.
+Desactivado por defecto; sin envíos ni despliegues remotos realizados.
+Ver [configuración, activación manual, pruebas y reversión](docs/stage-8-transactional-email.md).
+
+### Etapa 8 — Administración y activación (fase 5)
+
+Estados de pedido y pago separados; transferencia ficticia con confirmación,
+idempotencia y auditoría; Mercado Pago se aprueba exclusivamente por evidencia
+verificada del proveedor. [Guía unificada de activación y reversión](docs/stage-8-activation.md).
+Sin despliegues ni migraciones remotas realizadas.

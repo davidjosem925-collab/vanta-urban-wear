@@ -13,7 +13,9 @@ export default defineConfig({
     env: {
       VITE_SUPABASE_URL: "https://vanta-cart-fixture.supabase.co",
       VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_browser_fixture_only",
+      VITE_DEMO_EMAIL_ENABLED: "false",
       VITE_DEMO_ORDERS_ENABLED: "true",
+      VITE_MP_CHECKOUT_ENABLED: "false",
       VITE_TURNSTILE_SITE_KEY: "test-public-sitekey",
     },
   },

@@ -68,7 +68,11 @@ it("shows loading, prevents simultaneous requests and only succeeds after genuin
     resolve(r);
     await first;
   });
-  expect(success).toHaveBeenCalledWith(r, p);
+  expect(success).toHaveBeenCalledWith(
+    r,
+    p,
+    expect.objectContaining({ payload: p }),
+  );
   expect(hook.result.current.pending).toBe(false);
   expect(sessionStorage.length).toBe(0);
 });
@@ -164,7 +168,11 @@ it("recovers a pending attempt even after reload with an empty or unavailable ca
   await act(() => hook.result.current.recover());
   expect(recover).toHaveBeenCalledWith(a);
   expect(confirm).not.toHaveBeenCalled();
-  expect(success).toHaveBeenCalledWith(r, p);
+  expect(success).toHaveBeenCalledWith(
+    r,
+    p,
+    expect.objectContaining({ payload: p }),
+  );
   expect(hook.result.current.recoverable).toBe(false);
 });
 it("corrupt persisted attempts fail closed instead of silently creating a fresh order", async () => {
@@ -246,4 +254,25 @@ it("older Edge rejecting recovery cannot erase an uncertain attempt", async () =
   );
   expect(confirm).not.toHaveBeenCalled();
   expect(success).not.toHaveBeenCalled();
+});
+
+it("payment handoff storage failure keeps the original attempt and enables recovery without another creation", async () => {
+  const success = vi.fn().mockImplementationOnce(() => {
+    throw Error("STORAGE");
+  });
+  const confirm = vi.fn().mockResolvedValue(r),
+    recover = vi.fn().mockResolvedValue(r);
+  const hook = renderHook(() =>
+    useDemoOrder({ enabled: true, siteKey: "test", confirm, recover }, success),
+  );
+  await act(() => hook.result.current.confirm(p, "token"));
+  const attempt = confirm.mock.calls[0][0];
+  expect(readAttempt(sessionStorage.getItem("vanta.order-attempt.v1"))).toEqual(
+    attempt,
+  );
+  expect(hook.result.current.recoverable).toBe(true);
+  await act(() => hook.result.current.recover());
+  expect(recover).toHaveBeenCalledWith(attempt);
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(sessionStorage.getItem("vanta.order-attempt.v1")).toBeNull();
 });

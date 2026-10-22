@@ -1,4 +1,5 @@
 /** Runtime-neutral edge handler. Only closed-vocabulary diagnostics; no request/PII logging. */
+import { enrollEmail } from "../_shared/demo-email/privacy.ts";
 import {
   diagnostic,
   DependencyError,
@@ -12,6 +13,7 @@ export type Settings = {
   challengeSecret: string;
   challengeHostname: string;
   actorSecret: string;
+  notifications?: { enabled: boolean; allowed: string; encryption: string };
 };
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 export async function sha(value: string) {
@@ -187,7 +189,7 @@ export function makeHandler(
         if (
           !b ||
           typeof b !== "object" ||
-          !["create", "recover", "cancel"].includes(b.action) ||
+          !["create", "recover", "cancel", "transfer"].includes(b.action) ||
           typeof b.capability !== "string" ||
           !/^[a-f0-9]{64}$/.test(b.capability)
         )
@@ -202,6 +204,20 @@ export function makeHandler(
         const limit = await callRpc("demo_rate_limit", { p_actor: actor });
         if (limit.error) return reply(503, "UNAVAILABLE");
         if (limit.data !== true) return reply(429, "RATE_LIMITED");
+        if (b.action === "transfer") {
+          if (
+            Object.keys(b).sort().join(",") !== "action,capability,reference" ||
+            !uuid.test(b.reference)
+          )
+            return reply(400, "INVALID_REQUEST");
+          const result = await callRpc("demo_transfer_payment", {
+            p_reference: b.reference,
+            p_owner: owner,
+          });
+          return result.error
+            ? reply(503, "UNAVAILABLE")
+            : reply(200, "", result.data);
+        }
         if (b.action === "cancel") {
           if (
             Object.keys(b).sort().join(",") !== "action,capability,reference" ||
@@ -220,7 +236,9 @@ export function makeHandler(
           Object.keys(b).sort().join(",") !==
             (b.action === "recover"
               ? "action,capability,idempotency_key,payload"
-              : "action,capability,challenge,idempotency_key,payload") ||
+              : Object.hasOwn(b, "notification_email")
+                ? "action,capability,challenge,idempotency_key,notification_email,payload"
+                : "action,capability,challenge,idempotency_key,payload") ||
           !uuid.test(b.idempotency_key) ||
           !b.payload ||
           typeof b.payload !== "object" ||
@@ -245,6 +263,39 @@ export function makeHandler(
         if (replay.data) return reply(200, "", replay.data);
         // A query must never become a creation attempt, even if a token is supplied.
         if (b.action === "recover") return reply(200, "", { found: false });
+        let email: Awaited<ReturnType<typeof enrollEmail>> | undefined;
+        if (Object.hasOwn(b, "notification_email")) {
+          try {
+            email = await enrollEmail(
+              b.notification_email,
+              b.idempotency_key,
+              settings.notifications ?? {
+                enabled: false,
+                allowed: "",
+                encryption: "",
+              },
+            );
+          } catch (error) {
+            const code =
+              error instanceof Error &&
+              [
+                "INVALID_EMAIL",
+                "EMAIL_DISABLED",
+                "EMAIL_NOT_CONFIGURED",
+                "EMAIL_RECIPIENT_UNAVAILABLE",
+              ].includes(error.message)
+                ? error.message
+                : "EMAIL_NOT_CONFIGURED";
+            return reply(
+              code === "INVALID_EMAIL"
+                ? 400
+                : code === "EMAIL_RECIPIENT_UNAVAILABLE"
+                  ? 403
+                  : 503,
+              code,
+            );
+          }
+        }
         if (!b.challenge.trim()) {
           trace.record(
             "siteverify",
@@ -398,7 +449,13 @@ export function makeHandler(
         const admission = await callRpc("demo_admit_creation", {});
         if (admission.error) return reply(503, "UNAVAILABLE");
         if (admission.data !== true) return reply(429, "RATE_LIMITED");
-        const result = await callRpc("demo_create_order", args);
+        const result = email
+          ? await callRpc("demo_email_create_order", {
+              ...args,
+              p_recipient_hash: email.recipient_hash,
+              p_ciphertext: email.ciphertext,
+            })
+          : await callRpc("demo_create_order", args);
         if (result.error) {
           const code = [
             "INSUFFICIENT_STOCK",
@@ -407,6 +464,9 @@ export function makeHandler(
             "IDEMPOTENCY_CONFLICT",
             "DEMO_CAPACITY",
             "INVALID_REQUEST",
+            "EMAIL_DISABLED",
+            "INVALID_EMAIL",
+            "EMAIL_RECIPIENT_UNAVAILABLE",
           ].find((c) => result.error!.message.includes(c));
           return reply(
             code === "INVALID_REQUEST" ? 400 : code ? 409 : 503,

@@ -215,6 +215,10 @@ try {
     "202610180002_storage.sql",
     "202610200001_demo_orders.sql",
     "202610200002_admin_panel.sql",
+    "202610230001_mp_test_backend.sql",
+    "202610230002_checkout_payments.sql",
+    "202610230003_transactional_email.sql",
+    "202610230004_admin_payments.sql",
   ])
     sql(readFileSync(`supabase/migrations/${file}`, "utf8"));
   const category = randomUUID();
@@ -284,6 +288,11 @@ try {
     });
   }
   const aal1 = signup.data.session.access_token;
+  assert.equal((await call(aal1, "mp_test_settings")).status, 403);
+  assert.equal(
+    (await call(jwt("service_role"), "mp_test_settings")).status,
+    200,
+  );
   const [jwtHeader, jwtPayload, jwtSignature] = aal1.split(".");
   const tampered =
     jwtHeader +
@@ -343,6 +352,53 @@ try {
   assert.equal(verified.error, null);
   const aal2 = (await client.auth.getSession()).data.session.access_token;
   assert.equal(await (await call(aal2, "is_admin")).json(), true);
+  assert.equal((await call(aal2, "mp_test_settings")).status, 403);
+  assert.equal((await call(aal2, "demo_email_claim")).status, 403);
+  assert.deepEqual(
+    await (
+      await call(aal2, "admin_demo_order_payments", { p_orders: [] })
+    ).json(),
+    [],
+  );
+  assert.equal(
+    (
+      await call(jwt("service_role"), "admin_demo_order_payments", {
+        p_orders: [],
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await call(aal1, "admin_demo_order_payments", { p_orders: [] })).status,
+    400,
+  );
+  console.log(
+    "PASS active signed administrator can read safe payment metadata; AAL1 legacy and service token cannot",
+  );
+  assert.equal(
+    (
+      await call(aal2, "demo_email_create_order", {
+        p_key: randomUUID(),
+        p_owner: "a".repeat(64),
+        p_payload: {},
+        p_recipient_hash: "d".repeat(64),
+        p_ciphertext: "synthetic",
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await call(aal2, "demo_transfer_payment", {
+        p_reference: randomUUID(),
+        p_owner: "a".repeat(64),
+      })
+    ).status,
+    403,
+  );
+  console.log(
+    "PASS real signed admin AAL1/AAL2 JWTs cannot execute payment backend RPCs; service JWT can",
+  );
   if (withPasskeys)
     await passkeys.testPasskeys({
       gateway,

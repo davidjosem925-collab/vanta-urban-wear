@@ -8,6 +8,12 @@ import {
   date,
 } from "./model";
 import { friendly } from "./ux";
+import { OrderPayments } from "./OrderPayments";
+import {
+  type OrderPayments as PaymentData,
+  emptyPayments,
+  paymentLabel,
+} from "./paymentModel";
 export function Orders({
   onUnauthorized,
   selectedId,
@@ -31,6 +37,7 @@ export function Orders({
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
   const generation = useRef(0);
+  const [payments, setPayments] = useState<PaymentData[]>([]);
   const load = useCallback(async () => {
     const id = ++generation.current;
     setLoading(true);
@@ -68,7 +75,13 @@ export function Orders({
           new Date(`${filter.to}T23:59:59.999`).toISOString(),
         );
       const result = await rows<DemoOrder[]>(q);
-      if (id === generation.current) setOrders(result);
+      const ps = await rpc<PaymentData[]>("admin_demo_order_payments", {
+        p_orders: result.map((o) => o.id),
+      });
+      if (id === generation.current) {
+        setOrders(result);
+        setPayments(ps);
+      }
     } catch (e) {
       if (id === generation.current) setError((e as Error).message);
     } finally {
@@ -97,7 +110,10 @@ export function Orders({
             .eq("id", order.id),
         );
         if (!list.length) throw new Error("Pedido no disponible.");
-        const [is, rs] = await Promise.all([
+        const [ps, is, rs] = await Promise.all([
+          rpc<PaymentData[]>("admin_demo_order_payments", {
+            p_orders: [order.id],
+          }),
           rows<OrderItem[]>(
             connected()
               .from("order_items")
@@ -114,6 +130,7 @@ export function Orders({
           ),
         ]);
         if (id !== generation.current) return;
+        setPayments(ps);
         setItems(is);
         setReservations(rs);
         setSelected(list[0]);
@@ -152,8 +169,9 @@ export function Orders({
         </button>
       </div>
       <p>
-        Pedidos ficticios, sin cobros. Las reservas duran 60 minutos; su
-        liberación se procesa automáticamente.
+        Entorno de demostración, sin cobros productivos. Pedido y pago tienen
+        estados separados. Las reservas duran 60 minutos; su liberación se
+        procesa automáticamente.
       </p>
       {error && (
         <p className="admin-alert" role="alert">
@@ -172,7 +190,7 @@ export function Orders({
           <h3>{selected.public_reference}</h3>
           <dl className="admin-facts">
             <div>
-              <dt>Estado</dt>
+              <dt>Estado del pedido</dt>
               <dd>{friendly(selected.status)}</dd>
             </div>
             <div>
@@ -203,6 +221,15 @@ export function Orders({
               </dd>
             </div>
           </dl>
+          <OrderPayments
+            key={selected.id}
+            order={selected}
+            data={
+              payments.find((p) => p.order_id === selected.id) ??
+              emptyPayments(selected.id)
+            }
+            refresh={() => detail(selected)}
+          />
           <h4>Productos del pedido</h4>
           {items.map((i) => (
             <div className="admin-line" key={i.id}>
@@ -291,6 +318,16 @@ export function Orders({
               <article className="admin-card" key={o.id}>
                 <div>
                   <h3>{o.public_reference}</h3>
+                  <p>
+                    Pago:{" "}
+                    {payments
+                      .find((p) => p.order_id === o.id)
+                      ?.payments.map(
+                        (p) =>
+                          `${p.method === "mercado_pago" ? "Mercado Pago · Pruebas" : "Transferencia / demo"} · ${paymentLabel(p.status)}`,
+                      )
+                      .join("; ") || "Sin operación registrada"}
+                  </p>
                   <p>
                     {friendly(o.status)} · {date(o.created_at)} ·{" "}
                     {money(o.subtotal_cents)}
