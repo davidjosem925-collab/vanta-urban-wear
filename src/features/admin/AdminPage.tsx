@@ -52,7 +52,7 @@ function AccessAlternative({
 export function AdminPage() {
   const [session, setSession] = useState<Session | null>(null),
     [state, setState] = useState<
-      "loading" | "login" | "mfa" | "ready" | "denied" | "retry"
+      "loading" | "signing-out" | "login" | "mfa" | "ready" | "denied" | "retry"
     >("loading");
   const [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -360,7 +360,7 @@ export function AdminPage() {
     sessionIdentity.current = null;
     generation.current++;
     signingOut.current = true;
-    setState("loading");
+    setState("signing-out");
     try {
       const result = await client?.auth.signOut({ scope });
       if (result?.error) throw result.error;
@@ -434,33 +434,30 @@ export function AdminPage() {
           </button>
         )}
       </header>
-      {emailAccessEnabled && session && (
-        <button
-          className="button secondary"
-          disabled={busy}
-          onClick={() => {
-            if (
-              window.confirm(
-                "¿Querés cerrar tu acceso en todos los dispositivos?",
-              )
-            )
-              void action(() => logout("global"));
-          }}
-        >
-          Cerrar todas las sesiones
-        </button>
-      )}
       {error && (
         <p className="admin-alert" role="alert">
           {error}
         </p>
       )}
       {notice && (
-        <p className="admin-notice" role="status">
+        <p
+          className="admin-notice"
+          role="status"
+          aria-label="Avisos de la cuenta"
+        >
           {notice}
         </p>
       )}
-      {state === "loading" && <p role="status">Verificando acceso…</p>}
+      {state === "loading" && (
+        <p role="status" aria-label="Verificación del acceso">
+          Verificando acceso…
+        </p>
+      )}
+      {state === "signing-out" && (
+        <p role="status" aria-label="Cierre de sesión">
+          Cerrando sesión…
+        </p>
+      )}
       {state === "retry" && (
         <div className="admin-card admin-auth">
           <h2>Volver a comprobar el acceso</h2>
@@ -926,10 +923,17 @@ export function AdminPage() {
                 const { error } = await client!.auth.updateUser({ password });
                 if (error) throw error;
                 setNotice("Contraseña actualizada. Cerrando tus sesiones…");
-                await logout(emailAccessEnabled ? "global" : "local");
-                setNotice(
-                  "Contraseña actualizada. Volvé a ingresar con tu nueva contraseña.",
-                );
+                try {
+                  await logout(emailAccessEnabled ? "global" : "local");
+                  setNotice(
+                    "Contraseña actualizada. Volvé a ingresar con tu nueva contraseña.",
+                  );
+                } catch (error) {
+                  setNotice(
+                    "Contraseña actualizada. No se pudo confirmar el cierre de las sesiones.",
+                  );
+                  throw error;
+                }
               });
             }}
           >
@@ -967,6 +971,35 @@ export function AdminPage() {
           <AdminWorkspace userId={session.user.id} onUnauthorized={deny} />
         </>
       )}
+      {emailAccessEnabled &&
+        session &&
+        state !== "loading" &&
+        state !== "signing-out" && (
+          <section
+            className="admin-card admin-account-security"
+            aria-labelledby="admin-account-security-title"
+          >
+            <h2 id="admin-account-security-title">Seguridad de la cuenta</h2>
+            <p>
+              Podés cerrar tu acceso en todos los dispositivos. Necesitarás
+              volver a ingresar en cada uno.
+            </p>
+            <button
+              className="button secondary"
+              disabled={busy}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "¿Querés cerrar tu acceso en todos los dispositivos?",
+                  )
+                )
+                  void action(() => logout("global"));
+              }}
+            >
+              Cerrar todas las sesiones
+            </button>
+          </section>
+        )}
     </section>
   );
 }

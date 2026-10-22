@@ -61,9 +61,9 @@ test("email: request never creates users; hash link works without PKCE storage a
     .getByLabel("Correo para recibir el enlace")
     .fill("admin@example.invalid");
   await page.getByRole("button", { name: "Recibir enlace de acceso" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Si el correo corresponde",
-  );
+  await expect(
+    page.getByRole("status", { name: "Avisos de la cuenta" }),
+  ).toContainText("Si el correo corresponde");
   expect(request).toMatchObject({
     create_user: false,
     email: "admin@example.invalid",
@@ -151,6 +151,17 @@ test("email: recovery without factors changes password and logs out; existing fa
     emailMode: true,
     totpDevices: [],
   });
+  let releaseLogout!: () => void;
+  const logoutResponse = new Promise<void>((resolve) => {
+    releaseLogout = resolve;
+  });
+  let logoutScope = "";
+  await page.route("**/auth/v1/logout**", async (route) => {
+    logoutScope =
+      new URL(route.request().url()).searchParams.get("scope") ?? "";
+    await logoutResponse;
+    await route.fulfill({ status: 204 });
+  });
   await page.route("**/auth/v1/verify", (r) =>
     r.fulfill({ json: f.session("aal1") }),
   );
@@ -169,9 +180,35 @@ test("email: recovery without factors changes password and logs out; existing fa
     .fill("New-local-password-123!");
   await page.getByLabel("Repetir contraseña").fill("New-local-password-123!");
   await page.getByRole("button", { name: "Guardar contraseña" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Contraseña actualizada",
+  const notices = page.getByRole("status", { name: "Avisos de la cuenta" });
+  await expect(notices).toHaveText(
+    "Contraseña actualizada. Cerrando tus sesiones…",
   );
+  await expect(
+    page.getByRole("status", { name: "Cierre de sesión" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Verificando acceso…", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Ingresá a VANTA" }),
+  ).toHaveCount(0);
+  // A window focus while the server is pending must not restore private UI.
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(
+    page.getByRole("status", { name: "Cierre de sesión" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "+ Agregar producto", exact: true }),
+  ).toHaveCount(0);
+  expect(logoutScope).toBe("global");
+  releaseLogout();
+  await expect(notices).toHaveText(
+    "Contraseña actualizada. Volvé a ingresar con tu nueva contraseña.",
+  );
+  await expect(
+    page.getByRole("status", { name: "Cierre de sesión" }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Ingresá a VANTA" }),
   ).toBeVisible();
@@ -216,7 +253,9 @@ test("email: PKCE uses this browser's verifier and rejects a callback without it
     .getByLabel("Correo para recibir el enlace")
     .fill("admin@example.invalid");
   await page.getByRole("button", { name: "Recibir enlace de acceso" }).click();
-  await expect(page.getByRole("status")).toContainText("recibirás");
+  await expect(
+    page.getByRole("status", { name: "Avisos de la cuenta" }),
+  ).toContainText("recibirás");
   await page.route("**/auth/v1/token?grant_type=pkce", (r) => {
     verifier = r.request().postDataJSON().code_verifier;
     return r.fulfill({ json: f.session("aal1") });
@@ -269,8 +308,28 @@ test("email: server denial blocks a persisted session and global logout uses the
     scope = new URL(r.request().url()).searchParams.get("scope") ?? "";
     return r.fulfill({ status: 204 });
   });
+  const security = page.getByRole("region", { name: "Seguridad de la cuenta" });
+  await expect(
+    page
+      .locator(".admin-heading")
+      .getByRole("button", { name: "Cerrar sesión", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".admin-heading")
+      .getByRole("button", { name: "Cerrar todas las sesiones" }),
+  ).toHaveCount(0);
+  page.once("dialog", (d) => void d.dismiss());
+  await security
+    .getByRole("button", { name: "Cerrar todas las sesiones" })
+    .click();
+  expect(scope).toBe("");
+  await expect(security).toBeVisible();
+  await noOverflow(page);
   page.once("dialog", (d) => void d.accept());
-  await page.getByRole("button", { name: "Cerrar todas las sesiones" }).click();
+  await security
+    .getByRole("button", { name: "Cerrar todas las sesiones" })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Ingresá a VANTA" }),
   ).toBeVisible();
@@ -324,4 +383,60 @@ test("email: rejected logout hides private data and never reports a completed lo
     page.getByRole("link", { name: "+ Agregar producto", exact: true }),
   ).toHaveCount(0);
   await expect(page.getByRole("alert")).not.toContainText("private");
+});
+test("email: password change is preserved when global logout fails, without a false completion", async ({
+  page,
+}) => {
+  const f = await fixture(page, {
+    logged: false,
+    emailMode: true,
+    totpDevices: [],
+  });
+  await page.route("**/auth/v1/verify", (r) =>
+    r.fulfill({ json: f.session("aal1") }),
+  );
+  await page.route("**/auth/v1/logout**", (r) =>
+    r.fulfill({
+      status: 400,
+      json: { error_code: "unexpected_failure", msg: "PRIVATE" },
+    }),
+  );
+  await page.goto(
+    "/?admin_recovery=1&token_hash=local-recovery&type=recovery#/admin",
+  );
+  await page.getByRole("button", { name: "Continuar con este enlace" }).click();
+  await page
+    .getByLabel("Nueva contraseña", { exact: true })
+    .fill("Changed-local-password-123!");
+  await page
+    .getByLabel("Repetir contraseña")
+    .fill("Changed-local-password-123!");
+  await page.getByRole("button", { name: "Guardar contraseña" }).click();
+  await expect(
+    page.getByRole("status", { name: "Avisos de la cuenta" }),
+  ).toHaveText(
+    "Contraseña actualizada. No se pudo confirmar el cierre de las sesiones.",
+  );
+  await expect(page.getByRole("alert")).toContainText(
+    "No pudimos confirmar el cierre",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Volver a comprobar el acceso" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Ingresá a VANTA" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("status", { name: "Cierre de sesión" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "+ Agregar producto", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("region", { name: "Seguridad de la cuenta" })
+      .getByRole("button", { name: "Cerrar todas las sesiones" }),
+  ).toBeVisible();
+  expect(f.errors).toEqual([]);
+  await noOverflow(page);
 });

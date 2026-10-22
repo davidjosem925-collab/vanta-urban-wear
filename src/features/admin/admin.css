@@ -1276,3 +1276,10 @@
 .admin-access-alternative form {
   margin-top: 1rem;
 }
+
+.admin-account-security {
+  margin-top: 24px;
+}
+.admin-account-security .button {
+  white-space: normal;
+}

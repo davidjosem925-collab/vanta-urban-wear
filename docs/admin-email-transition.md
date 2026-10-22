@@ -223,7 +223,7 @@ Comparar políticas/grants con el preflight de etapa 6: no se eliminan política
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run check`                 | **415/415**, 37 archivos; lint, TypeScript frontend/Edge y build aprobados                                                                                                                                                   |
 | Navegador de tienda/modo legado | **220/220**, acceso, panel, carrito y checkout; tras los ajustes de errores/cierre se repitieron **20/20** casos afectados                                                                                                   |
-| `npm run test:e2e:admin-email`  | **45/45**, modo nuevo, PKCE, token hash, persistencia, cierres local/global, fallo de cierre, recuperación y denegaciones                                                                                                    |
+| `npm run test:e2e:admin-email`  | **50/50**, modo nuevo, PKCE, token hash, persistencia, cierres local/global, fallo de cierre, recuperación y denegaciones                                                                                                    |
 | `npm run test:e2e:orders`       | **30/30**, regresión de confirmación, recuperación, reintentos e idempotencia de pedidos demo                                                                                                                                |
 | `npm run test:admin:email`      | GoTrue **2.197.0**, PostgreSQL y PostgREST **reales aislados**: enlace válido/vencido/reutilizado, AAL1 administrativo, RPC, no miembro, recuperación con/sin factores, revocación local/global/perfil, handshake y rollback |
 | `npm run test:orders:postgres`  | **11 comprobaciones** reales PostgreSQL: concurrencia, idempotencia, vencimiento/liberación, permisos y compatibilidad de la etapa 6                                                                                         |
@@ -273,3 +273,40 @@ subidas o modificaciones remotas.
 La transición **no está activada ni aceptada en Supabase alojado** hasta completar
 esos puntos. El desarrollo local puede estar verificado sin afirmar entrega SMTP
 real, seguridad del buzón o compatibilidad física no ejecutada.
+
+## Corrección del CI de recuperación y ubicación del cierre global
+
+Se revisó el [run 76, job checks](https://github.com/davidjosem925-collab/vanta-urban-wear/actions/runs/39820387594/job/119969803679).
+El fallo de escritorio y móvil era una violación estricta del selector genérico
+`getByRole("status")`: durante el cierre coexistían el aviso de contraseña ya
+actualizada y un indicador de carga. No acreditaba un fallo de Auth o de RLS.
+
+La prueba ahora selecciona **Avisos de la cuenta** por su nombre accesible y
+comprueba el mensaje final completo y el regreso al acceso **después** de recibir
+la respuesta del cierre global. No utiliza `.first()`, sleeps, ocultación de
+avisos ni relajación del modo estricto. Se retiene deliberadamente la respuesta
+del servidor y se dispara un evento de foco: el estado de cierre debe mantenerse
+sin restaurar el panel ni anunciar un cierre completado.
+
+El cierre tiene un estado propio, **Cerrando sesión…**, distinto de la verificación
+del acceso. Se conservan el bloqueo de inspección y la invalidación de solicitudes
+anteriores. Si la contraseña se actualiza pero falla el cierre, ambos hechos se
+informan: no queda un aviso de progreso perpetuo ni se presenta el cierre como
+exitoso. Los datos permanecen ocultos y puede reintentarse el cierre.
+
+**Cerrar sesión** permanece en la cabecera; **Cerrar todas las sesiones** está en
+la sección **Seguridad de la cuenta**, con confirmación. Cancelarla no envía la
+solicitud; aceptarla utiliza el scope global oficial. La sección también permite
+reintentar desde recuperación o un error de cierre con una sesión propia existente;
+no concede permisos de administración ni habilita el panel ante una denegación.
+Magic Link continúa como opción principal y contraseña como alternativa.
+
+Esta corrección no cambia SQL, políticas, flags, datos o configuración remota.
+
+Validación local de esta corrección: `npm run check` aprobado (415 pruebas,
+TypeScript frontend/Edge, lint y build); `npm audit` sin vulnerabilidades;
+`test:e2e:admin-email` **50/50** en los cinco anchos; **20/20** regresiones de
+acceso legado/recuperación; `test:admin:email` aprobado con GoTrue, PostgreSQL y
+PostgREST reales aislados. Las pruebas de navegador usan respuestas simuladas;
+no se realizaron autenticaciones ni cambios en Supabase alojado. El CI remoto
+se ejecuta de nuevo al subir el commit; estos resultados locales no lo sustituyen.
