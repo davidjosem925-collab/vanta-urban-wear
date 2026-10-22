@@ -3,10 +3,102 @@
 Esta entrega no requiere migraciones. No modifica RLS, RPC, `is_admin()`, roles,
 reservas, vencimientos, catálogo ni la Edge Function. Las opciones de dispositivo
 están desactivadas por defecto. No se ha configurado el proyecto remoto ni se
-realizaron inicios de sesión o envíos de correo allí. Solo se leyeron metadatos
-públicos mediante GET `/auth/v1/health` y `/auth/v1/settings`: el 21/10/2026
-respondieron HTTP 200, Auth `v2.197.0`, `passkeys_enabled=false` y correo
-habilitado. Estos datos no certifican SMTP ni la disponibilidad del factor experimental.
+realizaron inicios de sesión o envíos de correo allí en esta auditoría.
+**Estado actual confirmado por el propietario:** `passkeys_enabled=true`, RP ID
+`localhost`, origen `http://localhost:5173`; contraseña + TOTP funcionan.
+La lectura histórica que informó `passkeys_enabled=false` ya no representa esa
+configuración. MFA WebAuthn alojado sigue sin confirmarse.
+
+## Prueba local sin publicar VANTA (PR #8)
+
+Hay dos activaciones independientes: la configuración del proveedor y los flags
+públicos de Vite. En este workspace ambos flags efectivos estaban en `false` y
+no había RP configurado; esto no describe el `.env.local` de tu computadora.
+`experimental.passkey` del cliente no activa los botones ni habilita MFA remoto.
+
+La validación actual acepta correctamente `localhost`: comprueba espacios,
+protocolo/puerto y pertenencia al hostname. Se agregaron pruebas de regresión de
+RP local, dominios, valores inválidos y separación de flags. No se encontró un
+fallo de código que impida localhost: la activación local y la disponibilidad del
+segundo factor son condiciones independientes. No se modifica la autorización.
+
+Validación de esta auditoría: `npm run check` aprobado (lint, TypeScript de Edge
+Functions y frontend, 388 pruebas en 35 archivos y build). Incluye 15 pruebas
+nuevas de flags/RP. `admin-access.spec.ts` aprobado: 30/30 en Chromium a 1440 y
+393 px, con respuestas Supabase simuladas y autenticador virtual. No se probaron
+biometría física ni autenticación remota en esta revisión. Los resultados de
+GoTrue real local que figuran más abajo corresponden a la revisión anterior.
+
+### Qué podés probar ahora
+
+1. En `.env.local`, conservar URL y clave pública existentes y configurar:
+
+   ```dotenv
+   VITE_ADMIN_PASSKEYS_ENABLED=true
+   VITE_ADMIN_DEVICE_MFA_ENABLED=false
+   VITE_ADMIN_RP_ID=localhost
+   ```
+
+2. Reiniciar Vite: `npm run dev -- --host localhost --port 5173 --strictPort`.
+   Abrir exactamente `http://localhost:5173/#/admin`, no `127.0.0.1` ni la IP LAN.
+   No hace falta publicar ni usar HTTPS para localhost. Los flags se leen al
+   iniciar Vite/construir, no dinámicamente desde Supabase.
+3. **Prueba manual que registra una credencial, solo cuando el propietario decida
+   realizarla:** ingresar con contraseña + TOTP, abrir Seguridad del acceso →
+   Administrar dispositivos y registrar una passkey de ingreso. No registrar si
+   ya existe un factor WebAuthn de segunda verificación: el guard lo impide.
+4. Conservar la ventana de respaldo y probar en otra ventana el botón
+   **Ingresar con huella, rostro o PIN**. El sistema operativo elige los métodos
+   disponibles; no se puede garantizar huella en todos los equipos. Después del
+   ingreso primario se exige todavía TOTP: **esa passkey no concede AAL2**.
+   Comprobar el respaldo antes de cerrar la sesión original.
+
+Las credenciales de localhost son de prueba: cambiar RP requiere registrarlas de
+nuevo. No cambiar el RP remoto para esta prueba ni inventar un dominio definitivo.
+En un celular, localhost apunta al propio celular, no a la computadora. El origen
+HTTP de una IP LAN no sustituye localhost ni es una prueba válida del RP actual.
+Para probar en el mismo teléfono se necesita servir la aplicación en su propio
+localhost:5173, o aprobar posteriormente un origen HTTPS y RP compatibles. El
+flujo entre dispositivos del sistema operativo puede ofrecer QR, pero no equivale
+a una prueba de acceso local en el teléfono y no es obligatorio para la PC.
+
+### Confirmar MFA WebAuthn alojado sin modificarlo
+
+`passkeys_enabled` de `/auth/v1/settings` acredita solo ingreso primario.
+`mfa.listFactors()` acredita factores existentes, no la posibilidad de registrar
+uno nuevo; una lista vacía no prueba que el proveedor lo haya deshabilitado.
+No intentar `enroll()` como diagnóstico de solo lectura: puede crear un factor.
+
+El propietario puede consultar **GET** de la Management API pública
+`/v1/projects/evlbfjvvljbkntlozokt/config/auth`, fuera del frontend, con acceso de
+lectura autorizado. El ejemplo restringido de
+[la revisión anterior](admin-access-final-review.md#una-comprobación-manual-de-configuración-sin-modificarla)
+solo imprime una lista permitida de campos. No imprimir la respuesta completa,
+que puede contener configuración sensible; nunca usar un token de Management en
+`VITE_*`. Los nombres de MFA WebAuthn en ese ejemplo son campos a comprobar **si
+el servicio los expone**, no una promesa de soporte en la API pública actual.
+Campo ausente/null, HTTP 403 o documentación que no lo incluya significan
+**no confirmado**, no `false` y no permiso para probar PATCH o APIs internas.
+
+La documentación pública de passkeys confirma esa ruta de lectura, pero la guía
+MFA alojada no documenta la activación WebAuthn. Si el Dashboard oficial no muestra
+ambos controles de registro y verificación, consultar a soporte de Supabase:
+«¿Este proyecto alojado admite MFA WebAuthn, con enroll y verify habilitados,
+emitiendo AAL2, y cuál es el control público soportado para consultarlo?».
+Las opciones `auth.mfa.web_authn.*` de CLI o variables GoTrue de autohospedado no
+constituyen evidencia de habilitación en el proyecto alojado. No usar APIs del
+Dashboard no documentadas, secretos Edge ni cambios del esquema auth.
+
+Solo tras confirmar ambos controles se podrá aprobar una prueba manual de
+contraseña + dispositivo: activar localmente `VITE_ADMIN_DEVICE_MFA_ENABLED=true`,
+reiniciar Vite, registrar desde una sesión AAL2 y verificar en otra ventana que el
+SDK informa AAL2 **y el RPC `is_admin()` devuelve true**. Conservar TOTP y el guard
+que impide mezclar familias de credenciales. No borrar credenciales para una mera
+comprobación de disponibilidad. Hasta entonces, TOTP sigue siendo obligatorio.
+
+Fuentes: [passkeys y configuración pública](https://supabase.com/docs/guides/auth/passkeys),
+[MFA alojado](https://supabase.com/docs/guides/auth/auth-mfa),
+[opciones CLI locales](https://supabase.com/docs/guides/local-development/cli/config).
 
 ## Resultado de la auditoría
 
@@ -18,11 +110,11 @@ aceptan roles desde `user_metadata`, claves privadas ni autorizaciones del naveg
 
 Hay **dos credenciales diferentes**, aunque ambas usen la huella, rostro o PIN:
 
-| Mecanismo | API | Resultado observado en Auth local | Acceso administrativo |
-| --- | --- | --- | --- |
-| Passkey de ingreso | `auth.signInWithPasskey()` | AAL1 | Denegado por `is_admin()` |
-| Factor de dispositivo | `auth.mfa.webauthn.challenge/verify` | AAL2 tras verificar | Permitido solo con membresía activa |
-| Contraseña y aplicación de respaldo | Auth password + MFA actual | AAL2 tras verificar | Se conserva |
+| Mecanismo                           | API                                  | Resultado observado en Auth local | Acceso administrativo               |
+| ----------------------------------- | ------------------------------------ | --------------------------------- | ----------------------------------- |
+| Passkey de ingreso                  | `auth.signInWithPasskey()`           | AAL1                              | Denegado por `is_admin()`           |
+| Factor de dispositivo               | `auth.mfa.webauthn.challenge/verify` | AAL2 tras verificar               | Permitido solo con membresía activa |
+| Contraseña y aplicación de respaldo | Auth password + MFA actual           | AAL2 tras verificar               | Se conserva                         |
 
 Una passkey primaria **no sustituye por sí sola** el segundo paso del panel.
 Si el servicio habilita el factor experimental de dispositivo, se puede ingresar
@@ -77,7 +169,8 @@ Fuentes oficiales:
    Si el Dashboard/API oficialmente soportado del proyecto no ofrece su activación,
    solicitar confirmación a Supabase. No agregar secretos arbitrarios esperando
    que reconfiguren Auth alojado y no tocar el esquema `auth` manualmente.
-3. Elegir primero el dominio HTTPS estable aprobado para VANTA. En Authentication
+3. Para producción, elegir primero el dominio HTTPS estable aprobado para VANTA.
+   Para la prueba local, seguir la sección anterior sin cambiar el RP localhost. En Authentication
    → Passkeys configurar nombre VANTA, RP ID (solo hostname, sin protocolo,
    puerto o ruta) y orígenes HTTPS exactos aprobados. Usar el mismo RP para ambos
    mecanismos. No usar un dominio temporal de preview como RP de producción.
@@ -242,4 +335,4 @@ con sus resultados separados de esta validación inicial.
 Para el problema reproducido de interrupciones al verificar el código, métodos
 no visibles y elección de autenticadores, consultar [admin-mfa-session-fix.md](admin-mfa-session-fix.md).
 Incluye pruebas de renovación/pestañas y los pasos específicos para computadora
- y celular sin modificar la configuración remota automáticamente.
+y celular sin modificar la configuración remota automáticamente.

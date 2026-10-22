@@ -6,12 +6,12 @@ Conservar `is_admin()` = perfil activo + JWT `aal2`, RLS y RPC actuales. No hay
 cambios SQL, despliegues ni modificaciones del proyecto remoto en esta revisión.
 No está aprobado sustituir el segundo paso por una passkey primaria.
 
-| Alternativa | Evidencia | Decisión |
-| --- | --- | --- |
-| Contraseña + código actual | GoTrue real local, JWT firmados y RLS/RPC; interfaz con respuestas simuladas | Respaldo conservado |
-| Passkey primaria sola | GoTrue 2.197.0 real local emite AAL1; `is_admin()` rechaza | Nunca entra directamente al panel |
-| Contraseña + factor de dispositivo | GoTrue 2.197.0 real local emite AAL2; RPC autoriza solo administrador activo | Implementado detrás de activación manual; no acreditado en el proyecto alojado |
-| Passkey primaria + factor de dispositivo en el mismo autenticador | La integración detectó reemplazo de credencial residente por compartir RP/identidad | Registro de ambas modalidades bloqueado conservadoramente en la cuenta |
+| Alternativa                                                       | Evidencia                                                                           | Decisión                                                                       |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Contraseña + código actual                                        | GoTrue real local, JWT firmados y RLS/RPC; interfaz con respuestas simuladas        | Respaldo conservado                                                            |
+| Passkey primaria sola                                             | GoTrue 2.197.0 real local emite AAL1; `is_admin()` rechaza                          | Nunca entra directamente al panel                                              |
+| Contraseña + factor de dispositivo                                | GoTrue 2.197.0 real local emite AAL2; RPC autoriza solo administrador activo        | Implementado detrás de activación manual; no acreditado en el proyecto alojado |
+| Passkey primaria + factor de dispositivo en el mismo autenticador | La integración detectó reemplazo de credencial residente por compartir RP/identidad | Registro de ambas modalidades bloqueado conservadoramente en la cuenta         |
 
 El botón de dispositivo es la opción principal cuando hay un factor verificado;
 el código de la aplicación queda como alternativa secundaria. En el primer paso,
@@ -19,6 +19,11 @@ si se habilitan passkeys primarias, su botón también es principal, con aviso d
 segundo paso necesario. No se agrega una opción ficticia cuando los mecanismos
 están deshabilitados. El registro y la revocación siguen requiriendo una sesión
 administrativa autorizada y comprobación de `is_admin()` en el servidor.
+
+> Actualización: el propietario confirmó después passkeys habilitadas y RP localhost.
+> Para el estado vigente y la prueba sin publicación, ver [la guía actual](admin-access.md#prueba-local-sin-publicar-vanta-pr-8).
+> Las lecturas y el impedimento de dominio siguientes son históricos; localhost
+> permite pruebas primarias sin elegir aún un dominio de producción.
 
 ## Qué sabemos del servicio alojado
 
@@ -52,6 +57,10 @@ credencial con alcance Auth Read, **fuera del navegador de VANTA**. No pegar el
 token en el chat, en variables `VITE_*`, archivos versionados ni capturas. Si
 no tiene ese acceso, consultar al soporte de Supabase sobre la habilitación del
 factor experimental en su proyecto. No basta activar Authentication → Passkeys.
+
+Los campos WebAuthn del ejemplo solo se inspeccionan si el servicio los expone;
+un campo ausente no confirma deshabilitación ni soporte. No usar APIs privadas
+para completarlo.
 
 Ejemplo PowerShell, con `SUPABASE_ACCESS_TOKEN` ya disponible de forma segura:
 
