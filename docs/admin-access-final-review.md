@@ -15,8 +15,8 @@ No está aprobado sustituir el segundo paso por una passkey primaria.
 
 El botón de dispositivo es la opción principal cuando hay un factor verificado;
 el código de la aplicación queda como alternativa secundaria. En el primer paso,
-si se habilitan passkeys primarias, su botón también es principal, con aviso del
-segundo paso necesario. No se agrega una opción ficticia cuando los mecanismos
+se priorizan correo y contraseña; si se habilitan passkeys primarias, su botón
+es secundario, con aviso del segundo paso necesario. No se agrega una opción ficticia cuando los mecanismos
 están deshabilitados. El registro y la revocación siguen requiriendo una sesión
 administrativa autorizada y comprobación de `is_admin()` en el servidor.
 

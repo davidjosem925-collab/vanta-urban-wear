@@ -52,7 +52,7 @@ Comprobaciones de solo lectura del 21/10/2026:
 
 Ahora se informa si el método está desactivado, si falta configuración del sitio,
 si el navegador no lo admite o si todavía no se registró un dispositivo. Cuando
-no es compatible, el control queda deshabilitado y el código sigue disponible.
+no es compatible, el control se oculta y el código sigue disponible.
 «Actualizar métodos disponibles» solo vuelve a consultar, sin modificar factores.
 
 ## Seguridad y compatibilidad
@@ -95,7 +95,7 @@ Estos pasos se preparan para aprobación; no se ejecutaron cambios remotos.
    `VITE_ADMIN_DEVICE_MFA_ENABLED=true`, `VITE_ADMIN_RP_ID=RP_APROBADO`.
    Para la modalidad recomendada contraseña + dispositivo, el botón de passkey
    **primaria** puede seguir apagado (`VITE_ADMIN_PASSKEYS_ENABLED=false`). Esas
-   variables son públicas; no poner tokens Management/service_role en `VITE_*`.
+   variables son públicas; no poner tokens Management/service*role en `VITE*\*`.
 3. **Computadora:** configurar Windows Hello/PIN, Touch ID o protección equivalente
    del sistema. Usar navegador compatible y el origen HTTPS aprobado. Entrar con
    contraseña + código actual; desde **Seguridad del acceso → Administrar

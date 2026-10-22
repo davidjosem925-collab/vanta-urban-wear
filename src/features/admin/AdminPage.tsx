@@ -365,37 +365,6 @@ export function AdminPage() {
               acceso.
             </p>
           )}
-          {passkeysEnabled && (
-            <>
-              <button
-                className="button primary"
-                disabled={busy || !client}
-                onClick={() =>
-                  void action(async () => {
-                    if (!deviceSupported()) {
-                      setError(
-                        "Este navegador no admite el acceso con dispositivo. Usá tu correo y contraseña.",
-                      );
-                      return;
-                    }
-                    ceremony.current?.abort();
-                    ceremony.current = new AbortController();
-                    const r = await client!.auth.signInWithPasskey({
-                      options: { signal: ceremony.current.signal },
-                    });
-                    if (r.error) throw r.error;
-                    await inspect();
-                  })
-                }
-              >
-                Ingresar con huella, rostro o PIN
-              </button>
-              <p>
-                Si tu cuenta lo requiere, completá después la segunda
-                verificación con tu dispositivo o código de respaldo.
-              </p>
-            </>
-          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -435,6 +404,37 @@ export function AdminPage() {
               Ingresar
             </button>
           </form>
+          {passkeysEnabled && deviceSupported() && client && (
+            <>
+              <button
+                className="button secondary"
+                disabled={busy || !client}
+                onClick={() =>
+                  void action(async () => {
+                    if (!deviceSupported()) {
+                      setError(
+                        "Este navegador no admite el acceso con dispositivo. Usá tu correo y contraseña.",
+                      );
+                      return;
+                    }
+                    ceremony.current?.abort();
+                    ceremony.current = new AbortController();
+                    const r = await client!.auth.signInWithPasskey({
+                      options: { signal: ceremony.current.signal },
+                    });
+                    if (r.error) throw r.error;
+                    await inspect();
+                  })
+                }
+              >
+                Ingresar con huella, rostro o PIN
+              </button>
+              <p>
+                Si tu cuenta lo requiere, completá después la segunda
+                verificación con tu dispositivo o código de respaldo.
+              </p>
+            </>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -520,6 +520,8 @@ export function AdminPage() {
             </button>
           )}
           {deviceMfaEnabled &&
+            deviceSupported() &&
+            deviceConfigurationValid() &&
             deviceFactors.map((d) => (
               <div key={d.id} className="admin-device-option">
                 <button
@@ -561,6 +563,16 @@ export function AdminPage() {
                 </p>
               </div>
             ))}
+          {deviceMfaEnabled &&
+            deviceSupported() &&
+            deviceConfigurationValid() &&
+            deviceFactors.length > 0 && (
+              <p>
+                Si elegís usar otro dispositivo, seguí las indicaciones del
+                navegador. Si muestra un QR, escanealo con ese teléfono y
+                confirmá allí.
+              </p>
+            )}
           {!factor ? (
             <button
               className={`button ${deviceMfaEnabled && deviceFactors.length && deviceSupported() && deviceConfigurationValid() ? "secondary" : "primary"}`}

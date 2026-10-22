@@ -102,11 +102,10 @@ test("access: unsupported browser, cancelled ceremony and rejected password keep
     });
   });
   const state = await fixture(page, { logged: false });
-  await page
-    .getByRole("button", { name: "Ingresar con huella, rostro o PIN" })
-    .click();
-  await expect(page.getByRole("alert")).toContainText("no admite");
-  await page.evaluate(() => {
+  await expect(
+    page.getByRole("button", { name: "Ingresar con huella, rostro o PIN" }),
+  ).toHaveCount(0);
+  await page.addInitScript(() => {
     Object.defineProperty(window, "PublicKeyCredential", {
       value: class {},
       configurable: true,
@@ -115,6 +114,7 @@ test("access: unsupported browser, cancelled ceremony and rejected password keep
       throw new DOMException("local cancellation", "NotAllowedError");
     };
   });
+  await page.reload();
   await page
     .getByRole("button", { name: "Ingresar con huella, rostro o PIN" })
     .click();
@@ -502,7 +502,7 @@ test("access session: unsupported device explains limitation and leaves code ava
       name: "Ingresar con huella, rostro o PIN",
       exact: true,
     }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Usar código de respaldo" }).click();
   await expect(page.getByLabel("Código de seis dígitos")).toBeVisible();
   await noOverflow(page);

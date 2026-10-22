@@ -24,7 +24,7 @@ it("keeps server challenge and requires device verification", async () => {
   await verifyDevice(params, { userVerification: "required" });
   expect(challenge).toHaveBeenCalledWith(
     { ...params, signal: undefined },
-    { request: { userVerification: "required", hints: ["client-device"] } },
+    { request: { userVerification: "required" } },
   );
   expect(verify).toHaveBeenCalledWith(
     expect.objectContaining({

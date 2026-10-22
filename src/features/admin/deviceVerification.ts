@@ -10,7 +10,7 @@ export async function verifyDevice(
 ) {
   const r = await client!.auth.mfa.webauthn.challenge(
     { ...params, signal: params.webauthn.signal },
-    { request: { ...request, hints: ["client-device"] } },
+    { request: { ...request } },
   );
   if (r.error || !r.data)
     return { data: null, error: r.error ?? new Error("verification failed") };

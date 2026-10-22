@@ -147,8 +147,20 @@ export function AccessDevices({
             contraseña y segunda verificación con el dispositivo. No registres
             ambas en el mismo equipo. Conservá tu respaldo.
           </p>
+          {!deviceSupported() && (
+            <p>
+              Este navegador no permite registrar un dispositivo. Conservá tu
+              acceso de respaldo y probá un navegador compatible.
+            </p>
+          )}
+          {deviceMfaEnabled && !deviceConfigurationValid() && (
+            <p>
+              El registro necesita completar la configuración del sitio. Tu
+              acceso de respaldo sigue disponible.
+            </p>
+          )}
           <div className="admin-actions">
-            {passkeysEnabled && (
+            {passkeysEnabled && deviceSupported() && (
               <button
                 className="button secondary"
                 disabled={busy}
@@ -157,15 +169,17 @@ export function AccessDevices({
                 Registrar acceso con dispositivo
               </button>
             )}
-            {deviceMfaEnabled && (
-              <button
-                className="button secondary"
-                disabled={busy}
-                onClick={() => void action(() => register("verification"))}
-              >
-                Registrar verificación con dispositivo
-              </button>
-            )}
+            {deviceMfaEnabled &&
+              deviceSupported() &&
+              deviceConfigurationValid() && (
+                <button
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={() => void action(() => register("verification"))}
+                >
+                  Registrar verificación con dispositivo
+                </button>
+              )}
           </div>
           <ul>
             {devices.map((d) => (

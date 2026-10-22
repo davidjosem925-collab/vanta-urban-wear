@@ -100,6 +100,89 @@ Fuentes: [passkeys y configuración pública](https://supabase.com/docs/guides/a
 [MFA alojado](https://supabase.com/docs/guides/auth/auth-mfa),
 [opciones CLI locales](https://supabase.com/docs/guides/local-development/cli/config).
 
+## Rediseño del acceso: decisión para la demo
+
+Se prioriza **correo + contraseña → dispositivo como segundo paso → panel**.
+El formulario de contraseña aparece primero; la passkey primaria, si se habilita,
+es una alternativa secundaria y conserva el aviso de segunda verificación.
+Los controles de dispositivos incompatibles se ocultan en vez de ofrecer botones
+sin funcionalidad. El respaldo y los mensajes de disponibilidad permanecen.
+La verificación usa las opciones del SDK sin imponer preferencia por autenticador
+local; el navegador puede ofrecer otro teléfono cuando el transporte y la
+credencial lo permitan. Se conserva `userVerification: required`, el challenge
+emitido por el servidor, el RP y la verificación de Auth. Registro local y UV
+obligatoria se conservan; no se implementa criptografía propia ni cámara.
+
+**Disponibilidad real:** el propietario confirmó contraseña + TOTP y activación
+de passkeys primarias en Supabase alojado. No hay autorización/configuración de
+lectura suficiente en esta auditoría para acreditar MFA WebAuthn del proyecto.
+La documentación pública de MFA sigue mostrando TOTP y teléfono; no se puede
+inferir habilitación alojada del SDK ni de una prueba en GoTrue local.
+No se realizaron altas de factores, inicios de sesión o cambios remotos.
+
+### Verificación ejecutada del rediseño
+
+- `npm run check`: lint, TypeScript frontend/Edge, **388 pruebas / 35 archivos**
+  y build aprobados.
+- `npm run test:admin:passkeys`: **servicios reales aislados** GoTrue 2.197.0,
+  PostgreSQL y PostgREST; registro criptográfico, passkey AAL1 rechazada,
+  segundo factor AAL2 autorizado, TOTP, RLS/RPC, escritura directa denegada,
+  privacidad de borradores, listado/revocación y desactivación administrativa.
+  Usa Chromium con autenticador virtual; no acredita sensores físicos.
+- Navegador: **190/190**, acceso/panel/checkout en 1440, 820, 375, 393 y 320 px.
+  SDK real con respuestas Supabase simuladas, autenticador virtual y controles
+  de teclado/desbordes. No son pruebas del proveedor alojado ni de Safari/iOS.
+- `npm audit`: **0 vulnerabilidades**.
+- Proyecto remoto: sin mutaciones ni nuevas pruebas de autenticación. La URL y
+  clave pública están disponibles; no hay credencial Management Auth Read en el
+  entorno y api.supabase.com no está en su lista de hosts permitidos. La consulta
+  de configuración debe hacerla el propietario fuera del frontend, o soporte.
+
+### Recomendación y alternativas
+
+Para esta demo conservar contraseña + TOTP mientras Supabase no confirme MFA
+WebAuthn. TOTP es un estándar y no obliga específicamente a Google Authenticator:
+un autenticador o gestor compatible puede mejorar el uso cotidiano. Cambiar o
+transferir ese respaldo requiere un procedimiento manual del propietario,
+comprobando el nuevo acceso antes de retirar nada; esta PR no elimina factores.
+Guardar contraseña y códigos en la misma bóveda reduce la independencia de los
+factores y debe evaluarse antes de elegir ese respaldo.
+
+Si Supabase confirma registro **y** verificación WebAuthn, activar solo el flag de
+segundo factor, registrar tras contraseña + TOTP y probar contraseña + dispositivo
+en otra ventana. Conservar el respaldo y la recuperación por correo; el correo
+restablece contraseña, no recupera un factor perdido. No retirar TOTP hasta tener
+un segundo acceso independiente probado y un procedimiento del proveedor para
+pérdida del dispositivo. La interfaz conserva deliberadamente ese respaldo.
+No se propone una eliminación automática de factores.
+
+SMS es MFA oficial alternativo, pero requiere proveedor/configuración autorizada,
+cuesta dinero, depende de telefonía y tiene riesgos de SIM swap; tampoco brinda
+la experiencia biométrica solicitada. Autohospedar Auth supone mantenimiento y
+migración importantes; no se recomienda para resolver esta demo.
+
+**Contraseña sola (propuesta separada, no implementada):** puede simplificar una
+demo pero reduce protección ante phishing, filtraciones y reutilización de claves.
+Exigiría una revisión explícita del modelo de autorización SQL y políticas,
+porque hoy AAL1 debe ser rechazado. No corresponde cambiar solo el frontend ni
+inventar un JWT AAL2. Para una tienda comercial se recomienda mantener MFA.
+
+### Prueba física mínima, cuando se autorice
+
+- Windows 10/11 + Chrome: configurar Windows Hello/PIN en el sistema. No requiere
+  sensor biométrico si el autenticador admite PIN. Probar localhost:5173 con RP
+  localhost. Registrar desde sesión autorizada y comprobar entrada y revocación
+  sin cerrar la sesión de respaldo. Si falta MFA alojado, solo probar ingreso
+  primario + TOTP, no presentarlo como contraseña + dispositivo AAL2.
+- Android/iPhone: configurar bloqueo de pantalla y gestor de credenciales del
+  sistema. La IP LAN de la PC no satisface el RP localhost; servir en localhost
+  del teléfono o aprobar un origen HTTPS/RP estable antes de probar allí.
+  Si el navegador ofrece otro dispositivo, seguir sus indicaciones; el QR es
+  opcional del sistema, no un requisito impuesto por VANTA.
+- Probar cancelación, navegador sin soporte y recuperación por correo; conservar
+  los factores actuales. Windows Hello físico, Android, Safari/iOS y correo real
+  están pendientes: Chromium virtual no certifica esos dispositivos o servicios.
+
 ## Resultado de la auditoría
 
 El panel usa un cliente Auth independiente del cliente anónimo de la tienda.
