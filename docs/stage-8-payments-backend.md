@@ -303,3 +303,10 @@ la ejecución Linux/Windows de CI se registran con su estado real en la PR.
 La interfaz y la migración incremental de retornos/transferencia se documentan en
 [stage-8-checkout-payments.md](stage-8-checkout-payments.md). Los resultados de esta
 fase amplían los de fase 2; la evidencia exacta del último commit está en la PR.
+
+## Integración posterior de correo (fase 4)
+
+La implementación opcional de correos está documentada en
+[stage-8-transactional-email.md](stage-8-transactional-email.md).
+Las exclusiones de correo anteriores describen el alcance original de esta fase.
+No se activan envíos automáticamente ni se modifica la conciliación de pagos.

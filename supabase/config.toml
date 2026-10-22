@@ -14,3 +14,7 @@ verify_jwt = false
 verify_jwt = false
 [functions.mp-reconcile]
 verify_jwt = false
+
+# Phase 4: private bearer-authenticated worker, no public email sending endpoint.
+[functions.demo-email-worker]
+verify_jwt = false

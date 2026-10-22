@@ -18,6 +18,8 @@
     "runtime.d.ts",
     "demo-orders/*.ts",
     "_shared/mp-orders/*.ts",
+    "_shared/demo-email/*.ts",
+    "demo-email-worker/index.ts",
     "mp-*/index.ts"
   ]
 }

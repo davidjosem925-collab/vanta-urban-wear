@@ -178,3 +178,10 @@ inventa una identidad desde la URL ni se consulta por referencia pública. Hace
 falta revisión autorizada del administrador; no se debe repetir el pago para
 «recuperarlo». No se implementó una cuenta de comprador ni enlace de recuperación
 por correo; corresponde a las fases siguientes.
+
+## Integración posterior de correo (fase 4)
+
+La implementación opcional de correos está documentada en
+[stage-8-transactional-email.md](stage-8-transactional-email.md).
+Las exclusiones de correo anteriores describen el alcance original de esta fase.
+No se activan envíos automáticamente ni se modifica la conciliación de pagos.

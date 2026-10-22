@@ -7,6 +7,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import { normalizeNotificationEmail } from "../orders/notificationEmail";
 import { CheckoutSummary } from "./CheckoutSummary";
 import { useCart } from "../cart/context";
 import {
@@ -73,7 +74,15 @@ export function CheckoutPage({
   useEffect(() => {
     refresh();
   }, [step, refresh]);
-  const valid = Object.keys(validateDraft(draft)).length === 0;
+  let emailValid = true;
+  if (orders.notificationsEnabled) {
+    try {
+      normalizeNotificationEmail(draft.email);
+    } catch {
+      emailValid = false;
+    }
+  }
+  const valid = Object.keys(validateDraft(draft)).length === 0 && emailValid;
   const ready =
     cart.entries.length > 0 &&
     cart.total !== null &&
@@ -82,6 +91,14 @@ export function CheckoutPage({
   function submit(event: FormEvent) {
     event.preventDefault();
     const next = validateDraft(draft);
+    if (orders.notificationsEnabled) {
+      try {
+        normalizeNotificationEmail(draft.email);
+      } catch {
+        next.email =
+          "Ingresá un correo válido para las notificaciones de prueba.";
+      }
+    }
     setErrors(next);
     if (Object.keys(next).length) {
       requestAnimationFrame(() => {
@@ -248,8 +265,10 @@ export function CheckoutPage({
                 {new Date(orderReceipt.expires_at).toLocaleString("es-AR")}.
               </p>
               <p>
-                Solo los datos anonimizados de este pedido se guardaron. Las
-                prendas confirmadas se retiraron del carrito.
+                {orderReceipt.email_requested
+                  ? "Se guardaron el detalle del pedido y tu correo cifrado para sus notificaciones."
+                  : "Solo los datos anonimizados de este pedido se guardaron."}{" "}
+                Las prendas registradas se retiraron del carrito.
               </p>
             </div>
           )}
@@ -260,7 +279,9 @@ export function CheckoutPage({
           </p>
           <p>
             {orderReceipt
-              ? "No se enviaron correos ni mensajes. No se realizó ningún cobro."
+              ? orderReceipt.email_requested
+                ? "Solicitamos el envío de las novedades por correo. La entrega puede demorar; no es una confirmación de pago ni un comprobante fiscal."
+                : "No se enviaron correos ni mensajes. No se realizó ningún cobro."
               : "Tu selección sigue en el carrito. No se enviaron correos ni mensajes."}
           </p>
           <div className="checkout-actions">
@@ -299,10 +320,15 @@ export function CheckoutPage({
           </ol>
           <div className="checkout-demo-note">
             <p>
-              Usá datos ficticios. Los datos del formulario se conservan solo en
-              memoria durante esta visita y se pierden al recargar.{" "}
-              {orders.enabled &&
-                "El servidor no recibe tus datos de contacto ni domicilio: guarda un comprador anonimizado, prendas, entrega y método simulado."}
+              {orders.notificationsEnabled
+                ? "Usá datos de contacto y entrega ficticios, excepto una dirección de correo real autorizada para esta prueba."
+                : "Usá datos ficticios."}{" "}
+              Los datos del formulario se conservan solo en memoria durante esta
+              visita y se pierden al recargar.{" "}
+              {orders.notificationsEnabled
+                ? "Al confirmar, solo tu correo se enviará al servidor para las novedades del pedido. Se conservará cifrado hasta 30 días; no se enviarán tu nombre, teléfono ni domicilio. Solo se admiten destinatarios de prueba autorizados."
+                : orders.enabled &&
+                  "El servidor no recibe tus datos de contacto ni domicilio: guarda un comprador anonimizado, prendas, entrega y método simulado."}
             </p>
           </div>
           {step === "complete" && !completed && valid && (
@@ -685,10 +711,18 @@ export function CheckoutPage({
                     // A token is single-use. Remove it immediately, not after the request.
                     const token = challenge;
                     setChallenge("");
-                    void orderFlow.confirm(payload(), token).finally(() => {
-                      setChallenge("");
-                      setChallengeRevision((v) => v + 1);
-                    });
+                    void orderFlow
+                      .confirm(
+                        payload(),
+                        token,
+                        orders.notificationsEnabled
+                          ? normalizeNotificationEmail(draft.email)
+                          : undefined,
+                      )
+                      .finally(() => {
+                        setChallenge("");
+                        setChallengeRevision((v) => v + 1);
+                      });
                   } else {
                     onComplete();
                     window.location.hash = "/checkout/finalizado";

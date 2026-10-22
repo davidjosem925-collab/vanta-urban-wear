@@ -33,6 +33,7 @@ export function useDemoOrder(
     payload: OrderPayload | null,
     challenge: string,
     queryOnly: boolean,
+    notificationEmail?: string,
   ) {
     if (inFlight.current) return;
     setError("");
@@ -69,7 +70,9 @@ export function useDemoOrder(
       const a = attempt.current;
       const result = queryOnly
         ? await service.recover(a)
-        : await service.confirm(a, challenge);
+        : notificationEmail !== undefined && service.notificationsEnabled
+          ? await service.confirm(a, challenge, notificationEmail)
+          : await service.confirm(a, challenge);
       if (result === null) {
         // Keep identity/body even when absent: the original request may still commit.
         setRecoverable(false);
@@ -141,8 +144,11 @@ export function useDemoOrder(
     error,
     notice,
     recoverable,
-    confirm: (payload: OrderPayload, challenge: string) =>
-      perform(payload, challenge, false),
+    confirm: (
+      payload: OrderPayload,
+      challenge: string,
+      notificationEmail?: string,
+    ) => perform(payload, challenge, false, notificationEmail),
     recover: () => perform(null, "", true),
   };
 }

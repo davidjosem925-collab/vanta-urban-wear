@@ -217,6 +217,7 @@ try {
     "202610200002_admin_panel.sql",
     "202610230001_mp_test_backend.sql",
     "202610230002_checkout_payments.sql",
+    "202610230003_transactional_email.sql",
   ])
     sql(readFileSync(`supabase/migrations/${file}`, "utf8"));
   const category = randomUUID();
@@ -351,6 +352,19 @@ try {
   const aal2 = (await client.auth.getSession()).data.session.access_token;
   assert.equal(await (await call(aal2, "is_admin")).json(), true);
   assert.equal((await call(aal2, "mp_test_settings")).status, 403);
+  assert.equal((await call(aal2, "demo_email_claim")).status, 403);
+  assert.equal(
+    (
+      await call(aal2, "demo_email_create_order", {
+        p_key: randomUUID(),
+        p_owner: "a".repeat(64),
+        p_payload: {},
+        p_recipient_hash: "d".repeat(64),
+        p_ciphertext: "synthetic",
+      })
+    ).status,
+    403,
+  );
   assert.equal(
     (
       await call(aal2, "demo_transfer_payment", {

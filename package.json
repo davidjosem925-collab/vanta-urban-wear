@@ -29,7 +29,10 @@
     "test:admin:email": "node scripts/test-admin-auth.mjs --email",
     "test:e2e:admin-email": "playwright test --config playwright.email.config.ts",
     "test:payments:postgres": "node scripts/test-mp-postgres.mjs",
-    "test:e2e:payments": "playwright test --config playwright.payments.config.ts"
+    "test:e2e:payments": "playwright test --config playwright.payments.config.ts",
+    "test:emails:postgres": "node scripts/test-email-postgres.mjs",
+    "email:preview": "node --experimental-strip-types scripts/preview-demo-emails.mjs",
+    "test:e2e:notifications": "playwright test --config playwright.notifications.config.ts"
   },
   "dependencies": {
     "react": "^19.1.0",

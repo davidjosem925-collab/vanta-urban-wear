@@ -175,3 +175,9 @@ Pago Checkout Pro sandbox, transferencia ficticia y consulta de estados desde el
 servidor. No se envían correos. Ver [activación, variables, pruebas y reversión](docs/stage-8-checkout-payments.md).
 No habilitar el flag antes de revisar/aprobar las migraciones y los despliegues
 manuales; no se realizó ningún cambio remoto.
+
+### Etapa 8 — Correos transaccionales (fase 4)
+
+Outbox privada, Resend desde Edge Functions, plantillas HTML/texto e idempotencia.
+Desactivado por defecto; sin envíos ni despliegues remotos realizados.
+Ver [configuración, activación manual, pruebas y reversión](docs/stage-8-transactional-email.md).

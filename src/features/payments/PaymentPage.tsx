@@ -3,7 +3,13 @@ import { formatARS } from "../catalog/model";
 import type { usePayment } from "./usePayment";
 import { paymentHeading } from "./model";
 
-export function PaymentPage({ flow }: { flow: ReturnType<typeof usePayment> }) {
+export function PaymentPage({
+  flow,
+  notificationsEnabled = false,
+}: {
+  flow: ReturnType<typeof usePayment>;
+  notificationsEnabled?: boolean;
+}) {
   const started = useRef(false);
   useEffect(() => {
     if (!started.current) {
@@ -39,8 +45,10 @@ export function PaymentPage({ flow }: { flow: ReturnType<typeof usePayment> }) {
         {pending ? "Consultando con el servidor…" : paymentHeading(view)}
       </h1>
       <p className="checkout-intro">
-        Entorno de pruebas. No uses dinero real ni datos de tarjetas reales. No
-        se envían correos en esta fase.
+        Entorno de pruebas. No uses dinero real ni datos de tarjetas reales.{" "}
+        {notificationsEnabled
+          ? "Las novedades de los pedidos registrados con correo se envían según el estado verificado del servidor. No son comprobantes fiscales."
+          : "No se envían correos en esta fase."}
       </p>
       {!flow.enabled && (
         <p className="checkout-notice">

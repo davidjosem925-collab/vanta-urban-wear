@@ -377,7 +377,10 @@ function AppShell({
               </p>
             }
           >
-            <PaymentPage flow={paymentFlow} />
+            <PaymentPage
+              flow={paymentFlow}
+              notificationsEnabled={Boolean(orders.notificationsEnabled)}
+            />
           </Suspense>
         )}
         {route.kind === "checkout" && (

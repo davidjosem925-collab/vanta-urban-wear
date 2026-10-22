@@ -22,6 +22,9 @@ const businessCodes = [
   "PRICE_CHANGED",
   "DEMO_CAPACITY",
   "INVALID_REQUEST",
+  "EMAIL_DISABLED",
+  "INVALID_EMAIL",
+  "EMAIL_RECIPIENT_UNAVAILABLE",
 ] as const;
 /** Preserve business decisions; discard all raw PostgREST details at this boundary. */
 export function createRpc(
