@@ -4,6 +4,7 @@ import { resolve, dirname } from 'node:path';
 import * as nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { selectCatalog, id, imageBytes, PROJECT_REF, ROOT, SEEDS } from './demo-catalog.mjs';
+import { sameGeneratedText } from './generated-image-file.mjs';
 const quote=v=>typeof v==='number'?String(v):`'${String(v).replaceAll("'","''")}'`;
 
 // One atomic DO statement owns all writes. The final SELECT uses only persistent
@@ -155,6 +156,17 @@ function rejectOutputSymlinks(file) {
   }
 }
 
+/** CRLF is equivalent to LF; all other bytes remain significant. */
+export function prepareDemoSqlFile(path, sql, check = false) {
+  let actual;
+  try { actual = readFileSync(path, 'utf8'); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (actual !== undefined && sameGeneratedText(actual, sql)) return;
+  if (check) throw new Error('SQL desactualizado: ejecutar npm run demo:prepare.');
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, sql);
+}
+
 export function runGenerator(args) {
   const check=args.includes('--check');
   const confirmation=args.find(a=>a.startsWith('--confirm-project='))?.slice('--confirm-project='.length) ?? '';
@@ -171,11 +183,10 @@ export function runGenerator(args) {
     const sql=buildDemoSql(data,confirmation);
     data.products.forEach(imageBytes);
     if(check) {
-      if(readFileSync(path,'utf8')!==sql) throw new Error('SQL desactualizado: ejecutar npm run demo:prepare.');
+      prepareDemoSqlFile(path,sql,true);
       console.log(`OK offline: ámbito ${scope}, ${data.products.length} fotos íntegras y rutas/front.png, ${data.products.flatMap(p=>p.variants).length} variantes. Sin acceso remoto.`);
     } else {
-      mkdirSync(dirname(path),{recursive:true});
-      writeFileSync(path,sql);
+      prepareDemoSqlFile(path,sql);
       console.log(`SQL generado localmente en ${path}. Ámbito ${scope}. Confirmación ${confirmation?'incluida':'pendiente'}. No se ejecutó ninguna consulta.`);
     }
   }

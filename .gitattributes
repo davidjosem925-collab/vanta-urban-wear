@@ -1,6 +1,8 @@
 # Deterministic generated text, independent of core.autocrlf on checkout.
 supabase/seeds/optimized/manifest.json text eol=lf
 supabase/seeds/optimized/link-images.pending.sql text eol=lf
+supabase/seeds/catalog.example.sql text eol=lf
+supabase/seeds/catalog.extension.sql text eol=lf
 # Images must never pass through Git's text/EOL conversion (SHA-256 integrity).
 *.png -text
 *.webp -text

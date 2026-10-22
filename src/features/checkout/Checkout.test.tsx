@@ -10,6 +10,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../app/App";
 import { fixtureService, product } from "../../test/fixtures";
 import { STORAGE_KEY } from "../cart/model";
+import type { OrderService } from "../orders/service";
+
+// This suite exercises the local-only checkout. Never inherit deployed order
+// configuration or contact an Edge Function from a unit test.
+const localOrders: OrderService = {
+  enabled: false,
+  siteKey: "",
+  confirm: vi.fn(() => {
+    throw new Error("Unexpected order creation");
+  }),
+  recover: vi.fn(() => {
+    throw new Error("Unexpected order recovery");
+  }),
+};
 
 function route(hash: string) {
   act(() => {
@@ -36,7 +50,7 @@ function seed() {
 async function start() {
   seed();
   route("#/checkout");
-  const app = render(<App service={fixtureService()} />);
+  const app = render(<App service={fixtureService()} orders={localOrders} />);
   await screen.findByLabelText("Nombre");
   await waitFor(() =>
     expect(
@@ -74,6 +88,8 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  delete window.turnstile;
+  sessionStorage.clear();
 });
 describe("Checkout integrado con el carrito existente", () => {
   it("contrae inicialmente en móvil y mantiene cantidades, subtotal, entrega y formulario al alternar", async () => {
@@ -144,7 +160,7 @@ describe("Checkout integrado con el carrito existente", () => {
     "bloquea acceso vacío en %s",
     async (hash) => {
       route(hash);
-      render(<App service={fixtureService()} />);
+      render(<App service={fixtureService()} orders={localOrders} />);
       expect(
         await screen.findByRole("heading", {
           name: "Tu selección está vacía.",
@@ -257,7 +273,7 @@ describe("Checkout integrado con el carrito existente", () => {
     pickup();
     await review();
     app.unmount();
-    render(<App service={fixtureService()} />);
+    render(<App service={fixtureService()} orders={localOrders} />);
     expect(
       await screen.findByText(/Completá tus datos, entrega y método/),
     ).toBeVisible();
@@ -285,7 +301,7 @@ describe("Checkout integrado con el carrito existente", () => {
         return current;
       },
     });
-    render(<App service={service} />);
+    render(<App service={service} orders={localOrders} />);
     await screen.findByLabelText("Nombre");
     contact();
     pickup();
@@ -333,3 +349,106 @@ describe("Checkout integrado con el carrito existente", () => {
     ).toBeVisible();
   });
 });
+
+// The enabled path is tested separately with a simulated server receipt. The
+// local-only tests above must not silently switch modes with .env.local.
+it.each([true, false])(
+  "enabled orders require a challenge and server acceptance (accepted=%s)",
+  async (accepted) => {
+    const variantId = "10000000-0000-0000-0000-000000000001";
+    const item = {
+      ...product,
+      variants: [{ ...product.variants[0], id: variantId }],
+    };
+    const confirm = accepted
+      ? vi
+          .fn()
+          .mockResolvedValue({
+            reference: "20000000-0000-0000-0000-000000000001",
+            status: "pending",
+            subtotal_cents: 5000100,
+            created_at: "2026-10-20T00:00:00Z",
+            expires_at: "2026-10-20T01:00:00Z",
+            demo: true,
+          })
+      : vi.fn().mockRejectedValue(new Error("PRICE_CHANGED"));
+    const orders: OrderService = {
+      enabled: true,
+      siteKey: "fixture",
+      confirm,
+      recover: vi.fn(),
+    };
+    let token: ((value: string) => void) | undefined;
+    window.turnstile = {
+      render: vi.fn((_el, options) => {
+        token = options.callback as (value: string) => void;
+        return "fixture";
+      }),
+      remove: vi.fn(),
+    };
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        lines: [
+          { slug: item.slug, productId: item.id, variantId, quantity: 2 },
+        ],
+      }),
+    );
+    route("#/checkout");
+    render(
+      <App
+        service={fixtureService({ product: async () => item })}
+        orders={orders}
+      />,
+    );
+    await screen.findByLabelText("Nombre");
+    contact();
+    pickup();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Revisar demostración" }),
+      ).toBeEnabled(),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Revisar demostración" }),
+    );
+    const button = await screen.findByRole("button", {
+      name: "Confirmar pedido demo",
+    });
+    expect(button).toBeDisabled();
+    expect(confirm).not.toHaveBeenCalled();
+    await waitFor(() => expect(token).toBeTypeOf("function"));
+    act(() => token!("fixture-token"));
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(confirm.mock.calls[0][0].payload).toEqual({
+      items: [
+        { variant_id: variantId, quantity: 2, expected_price_cents: 2500050 },
+      ],
+      delivery: "pickup",
+      payment: "cash",
+    });
+    expect(confirm.mock.calls[0][1]).toBe("fixture-token");
+    if (accepted) {
+      expect(
+        await screen.findByRole("heading", { name: "Pedido demo registrado." }),
+      ).toBeVisible();
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).lines).toHaveLength(
+        0,
+      );
+    } else {
+      expect(await screen.findByRole("alert")).toHaveTextContent(/precio/i);
+      expect(
+        screen.queryByRole("heading", { name: "Pedido demo registrado." }),
+      ).not.toBeInTheDocument();
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).lines).toHaveLength(
+        1,
+      );
+      expect(
+        screen.getByRole("button", { name: "Confirmar pedido demo" }),
+      ).toBeDisabled();
+    }
+  },
+);
