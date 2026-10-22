@@ -232,7 +232,7 @@ it("real SQL + simulated provider: create, repeat, signed approval and replay co
   expect(JSON.stringify(diagnostics)).not.toContain(capability);
   expect(JSON.stringify(diagnostics)).not.toContain(settings.token);
 });
-it("wrong capability and arbitrary prices cannot create a payment or call POST", async () => {
+it("wrong capability and arbitrary prices cannot create a payment or call the provider", async () => {
   expect(
     (await handler("checkout")(checkout("create", { amount_cents: 1 }))).status,
   ).toBe(400);
@@ -240,6 +240,7 @@ it("wrong capability and arbitrary prices cannot create a payment or call POST",
     (await handler("checkout")(checkout("create", {}, "b".repeat(64)))).status,
   ).toBe(404);
   expect(writes).toHaveLength(0);
+  expect(fetcher).not.toHaveBeenCalled();
   expect(await value("select count(*)::int v from public.payments")).toBe(0);
 });
 it("a productive seller token is rejected before payment preparation or any provider POST", async () => {

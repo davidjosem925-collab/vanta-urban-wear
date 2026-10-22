@@ -270,16 +270,20 @@ export function makePaymentHandler(
         config.application_id !== settings.application
       )
         throw new PaymentError("NOT_CONFIGURED");
-      if (b.action === "create") {
-        if (config.enabled !== true) throw new PaymentError("DISABLED");
-        await provider.verifyIdentity();
-      }
-      const raw = await rpc("mp_test_prepare", {
+      if (b.action === "create" && config.enabled !== true)
+        throw new PaymentError("DISABLED");
+      const args = {
         p_reference: b.reference,
         p_owner: await hash(b.capability),
-        p_create: b.action === "create",
         p_return_origin: settings.origin,
-      });
+      };
+      // Authorize the capability BEFORE spending any provider quota. This read
+      // never prepares an absent payment; identity must pass before insertion.
+      let raw = await rpc("mp_test_prepare", { ...args, p_create: false });
+      if (raw === null && b.action === "create") {
+        await provider.verifyIdentity();
+        raw = await rpc("mp_test_prepare", { ...args, p_create: true });
+      }
       if (raw === null) return reply({ found: false });
       let c = context(raw);
       if (b.action === "create") c = await create(c);
