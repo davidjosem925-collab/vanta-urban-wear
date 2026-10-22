@@ -1,6 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { Session } from "@supabase/supabase-js";
-import { adminClient as client, rpc, ADMIN_AUTH_STORAGE_KEY } from "./client";
+import {
+  adminClient as client,
+  rpc,
+  ADMIN_AUTH_STORAGE_KEY,
+  adminSessionStorage,
+} from "./client";
 import { AdminWorkspace } from "./Workspace";
 import "./admin.css";
 import { clearAdminPreviews } from "./previews";
@@ -15,6 +26,29 @@ import {
   passkeysEnabled,
 } from "./access";
 import { verifyDevice } from "./deviceVerification";
+import {
+  emailAccessEnabled,
+  readEmailCallback,
+  requestAdminLink,
+  linkError,
+  type EmailCallback,
+} from "./emailAccess";
+function AccessAlternative({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return emailAccessEnabled ? (
+    <details className="admin-access-alternative">
+      <summary>{title}</summary>
+      {children}
+    </details>
+  ) : (
+    <>{children}</>
+  );
+}
 export function AdminPage() {
   const [session, setSession] = useState<Session | null>(null),
     [state, setState] = useState<
@@ -26,6 +60,12 @@ export function AdminPage() {
     [factor, setFactor] = useState(""),
     [qr, setQr] = useState(""),
     [recovery, setRecovery] = useState(false);
+  const [pendingLink, setPendingLink] = useState<Extract<
+    EmailCallback,
+    { kind: "hash" }
+  > | null>(null);
+  const linkConfirming = useRef(false);
+  const signingOut = useRef(false);
   const ceremony = useRef<AbortController | null>(null);
   const [deviceFactors, setDeviceFactors] = useState<
     { id: string; friendly_name?: string }[]
@@ -39,6 +79,10 @@ export function AdminPage() {
   const authorizedUser = useRef<string | null>(null);
   const [authRevision, setAuthRevision] = useState(0);
   const initialCallback = useRef(new URL(location.href));
+  const processingCallback = useRef(
+    emailAccessEnabled &&
+      readEmailCallback(initialCallback.current).kind !== "none",
+  );
   const exchange = useRef<Promise<{ error: unknown }> | null>(null);
   const deny = useCallback(() => {
     authorizedUser.current = null;
@@ -47,6 +91,7 @@ export function AdminPage() {
     setSession(null);
   }, []);
   const inspect = useCallback(async () => {
+    if (processingCallback.current || signingOut.current) return;
     const id = ++generation.current;
     if (!client) {
       setState("login");
@@ -108,19 +153,34 @@ export function AdminPage() {
         }
         return;
       }
+      if (
+        emailAccessEnabled &&
+        (await rpc<string>("admin_access_mode", {})) !== "email"
+      )
+        throw new Error("transition unavailable");
       const { data, error: aalError } =
         await client.auth.mfa.getAuthenticatorAssuranceLevel();
       if (aalError) throw aalError;
-      if (data.currentLevel === "aal2" && !(await rpc<boolean>("is_admin", {})))
+      const recovering =
+        sessionStorage.getItem("vanta.admin.recovery.v1") === s.session.user.id;
+      if (recovering) setRecovery(true);
+      const recoveryNeedsMfa =
+        recovering &&
+        factors.some((f) => f.status === "verified") &&
+        data.currentLevel !== "aal2";
+      const allowed =
+        (emailAccessEnabled || data.currentLevel === "aal2") &&
+        (await rpc<boolean>("is_admin", {}));
+      if (!emailAccessEnabled && data.currentLevel === "aal2" && !allowed)
         throw new Error("denied");
-      if (
-        sessionStorage.getItem("vanta.admin.recovery.v1") === s.session.user.id
-      )
-        setRecovery(true);
       if (id !== generation.current) return;
+      if (emailAccessEnabled && !allowed) {
+        deny();
+        return;
+      }
       authorizedUser.current =
-        data.currentLevel === "aal2" ? s.session.user.id : null;
-      setState(data.currentLevel === "aal2" ? "ready" : "mfa");
+        allowed && !recoveryNeedsMfa ? s.session.user.id : null;
+      setState(allowed && !recoveryNeedsMfa ? "ready" : "mfa");
     } catch (error) {
       if (id !== generation.current) return;
       authorizedUser.current = null;
@@ -132,13 +192,61 @@ export function AdminPage() {
           : "No pudimos comprobar tu acceso con el servidor. Tu sesión local no se cerró. Revisá la conexión y volvé a comprobar el acceso.",
       );
     }
-  }, []);
+  }, [deny]);
   useEffect(() => {
     const counter = generation;
     let active = true;
     async function initial() {
       const url = initialCallback.current,
         code = url.searchParams.get("code");
+      if (emailAccessEnabled) {
+        const callback = readEmailCallback(url);
+        if (callback.kind !== "none") {
+          history.replaceState(null, "", `${url.pathname}#/admin`);
+          if (callback.kind === "invalid") {
+            processingCallback.current = false;
+            setError(linkError);
+            setState("login");
+            return;
+          }
+          if (callback.kind === "hash") {
+            setPendingLink(callback);
+            setState("login");
+            return;
+          }
+          if (!client) {
+            processingCallback.current = false;
+            setError(linkError);
+            setState("login");
+            return;
+          }
+          exchange.current ??= client.auth.exchangeCodeForSession(
+            callback.code,
+            callback.flowId ? { flowId: callback.flowId } : undefined,
+          );
+          const result = await exchange.current;
+          if (!active) return;
+          if (result.error) {
+            processingCallback.current = false;
+            setError(
+              "El enlace venció, ya se usó o se abrió en otro navegador. Solicitá uno nuevo desde este dispositivo.",
+            );
+            setState("login");
+            return;
+          }
+          if (callback.recovery) {
+            sessionStorage.setItem(
+              "vanta.admin.recovery.v1",
+              (await client.auth.getSession()).data.session?.user.id ?? "",
+            );
+            setRecovery(true);
+          }
+        }
+        processingCallback.current = false;
+        if (active) void inspect();
+        return;
+      }
+
       if (
         url.searchParams.get("admin_recovery") === "1" &&
         (url.searchParams.has("error") || url.hash.includes("error="))
@@ -175,12 +283,13 @@ export function AdminPage() {
     }
     void initial().catch(() => {
       if (active) {
+        processingCallback.current = false;
         setError("No se pudo recuperar la sesión. Solicitá un enlace nuevo.");
         setState("login");
       }
     });
     const sub = client?.auth.onAuthStateChange(() => {
-      if (!active) return;
+      if (!active || processingCallback.current || signingOut.current) return;
       generation.current++;
       setAuthRevision((v) => v + 1);
       // Auth storage is tab-scoped; SDK notifications may originate in another
@@ -191,7 +300,7 @@ export function AdminPage() {
       // never open one: inspect() still validates Auth, active membership and AAL.
       // Foreign broadcasts never overwrite this tab's SDK storage.
       try {
-        const raw = sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY);
+        const raw = adminSessionStorage().getItem(ADMIN_AUTH_STORAGE_KEY);
         const own = raw ? JSON.parse(raw) : null;
         hidePrivateView = !own || own.user?.id !== sessionIdentity.current;
       } catch {
@@ -233,7 +342,7 @@ export function AdminPage() {
       setBusy(false);
     }
   }
-  async function logout() {
+  async function logout(scope: "local" | "global" = "local") {
     const inFlight = Boolean(
       document.querySelector('[data-admin-saving="true"]'),
     );
@@ -249,13 +358,24 @@ export function AdminPage() {
     authorizedUser.current = null;
     clearAdminPreviews();
     sessionIdentity.current = null;
-    await client?.auth.signOut({ scope: "local" });
-    setSession(null);
-    setQr("");
-    setFactor("");
-    setRecovery(false);
-    sessionStorage.removeItem("vanta.admin.recovery.v1");
-    setState("login");
+    generation.current++;
+    signingOut.current = true;
+    setState("loading");
+    try {
+      const result = await client?.auth.signOut({ scope });
+      if (result?.error) throw result.error;
+      setSession(null);
+      setQr("");
+      setFactor("");
+      setRecovery(false);
+      sessionStorage.removeItem("vanta.admin.recovery.v1");
+      setState("login");
+    } catch {
+      setState("retry");
+      throw { code: "admin_logout_unconfirmed" };
+    } finally {
+      signingOut.current = false;
+    }
   }
   async function setup() {
     if (!client) return;
@@ -308,12 +428,28 @@ export function AdminPage() {
           <button
             className="button secondary"
             disabled={busy}
-            onClick={() => void action(logout)}
+            onClick={() => void action(() => logout())}
           >
             Cerrar sesión
           </button>
         )}
       </header>
+      {emailAccessEnabled && session && (
+        <button
+          className="button secondary"
+          disabled={busy}
+          onClick={() => {
+            if (
+              window.confirm(
+                "¿Querés cerrar tu acceso en todos los dispositivos?",
+              )
+            )
+              void action(() => logout("global"));
+          }}
+        >
+          Cerrar todas las sesiones
+        </button>
+      )}
       {error && (
         <p className="admin-alert" role="alert">
           {error}
@@ -350,13 +486,71 @@ export function AdminPage() {
           </p>
           <button
             className="button secondary"
-            onClick={() => void action(logout)}
+            onClick={() => void action(() => logout())}
           >
             Volver al acceso
           </button>
         </div>
       )}
-      {state === "login" && (
+      {state === "login" && pendingLink && (
+        <div className="admin-card admin-auth">
+          <h2>
+            {pendingLink.recovery ? "Recuperar tu acceso" : "Confirmar ingreso"}
+          </h2>
+          <p>
+            Continuá solo si solicitaste este enlace para ingresar a VANTA en
+            este dispositivo.
+          </p>
+          <button
+            className="button primary"
+            disabled={busy}
+            onClick={() =>
+              void action(async () => {
+                if (linkConfirming.current || !client) return;
+                linkConfirming.current = true;
+                const link = pendingLink;
+                setPendingLink(null);
+                try {
+                  const result = await client.auth.verifyOtp({
+                    token_hash: link.token,
+                    type: link.recovery ? "recovery" : "email",
+                  });
+                  if (result.error || !result.data.session) {
+                    processingCallback.current = false;
+                    setError(linkError);
+                    return;
+                  }
+                  if (link.recovery) {
+                    sessionStorage.setItem(
+                      "vanta.admin.recovery.v1",
+                      result.data.session.user.id,
+                    );
+                    setRecovery(true);
+                  }
+                  processingCallback.current = false;
+                  await inspect();
+                } finally {
+                  processingCallback.current = false;
+                  linkConfirming.current = false;
+                }
+              })
+            }
+          >
+            Continuar con este enlace
+          </button>
+          <button
+            className="button secondary"
+            onClick={() => {
+              processingCallback.current = false;
+              setPendingLink(null);
+              setError("");
+            }}
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
+      {state === "login" && !pendingLink && (
         <div className="admin-card admin-auth">
           <h2>Ingresá a VANTA</h2>
           {!client && (
@@ -365,114 +559,172 @@ export function AdminPage() {
               acceso.
             </p>
           )}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const f = new FormData(e.currentTarget);
-              void action(async () => {
-                if (!client) return;
-                const { error } = await client.auth.signInWithPassword({
-                  email: String(f.get("email")),
-                  password: String(f.get("password")),
+          {emailAccessEnabled && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const email = String(
+                  new FormData(e.currentTarget).get("email"),
+                );
+                void action(async () => {
+                  const result = await requestAdminLink(email);
+                  if (result.error) throw result.error;
+                  setNotice(
+                    "Si el correo corresponde a una cuenta habilitada, recibirás un enlace de un solo uso. Revisá también la carpeta de spam.",
+                  );
                 });
-                if (error) throw error;
-                await inspect();
-              });
-            }}
-          >
-            <label>
-              Correo administrativo
-              <input
-                name="email"
-                type="email"
-                autoComplete="username"
-                required
-                maxLength={254}
-              />
-            </label>
-            <label>
-              Contraseña
-              <input
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                maxLength={200}
-              />
-            </label>
-            <button className="button primary" disabled={busy || !client}>
-              Ingresar
-            </button>
-          </form>
-          {passkeysEnabled && deviceSupported() && client && (
-            <>
-              <button
-                className="button secondary"
-                disabled={busy || !client}
-                onClick={() =>
-                  void action(async () => {
-                    if (!deviceSupported()) {
-                      setError(
-                        "Este navegador no admite el acceso con dispositivo. Usá tu correo y contraseña.",
-                      );
-                      return;
-                    }
-                    ceremony.current?.abort();
-                    ceremony.current = new AbortController();
-                    const r = await client!.auth.signInWithPasskey({
-                      options: { signal: ceremony.current.signal },
-                    });
-                    if (r.error) throw r.error;
-                    await inspect();
-                  })
-                }
-              >
-                Ingresar con huella, rostro o PIN
+              }}
+            >
+              <label>
+                Correo para recibir el enlace
+                <input
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  required
+                  maxLength={254}
+                />
+              </label>
+              <button className="button primary" disabled={busy || !client}>
+                Recibir enlace de acceso
               </button>
               <p>
-                Si tu cuenta lo requiere, completá después la segunda
-                verificación con tu dispositivo o código de respaldo.
+                Abrilo en el dispositivo donde querés administrar la tienda.
               </p>
-            </>
+            </form>
           )}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const email = String(new FormData(e.currentTarget).get("email"));
-              void action(async () => {
-                const redirect = new URL(location.pathname, location.origin);
-                redirect.searchParams.set("admin_recovery", "1");
-                redirect.hash = "/admin";
-                const result = await client!.auth.resetPasswordForEmail(email, {
-                  redirectTo: redirect.toString(),
+          <AccessAlternative title="Ingresar con contraseña">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const f = new FormData(e.currentTarget);
+                void action(async () => {
+                  if (!client) return;
+                  const { error } = await client.auth.signInWithPassword({
+                    email: String(f.get("email")),
+                    password: String(f.get("password")),
+                  });
+                  if (error) throw error;
+                  await inspect();
                 });
-                if (result.error) throw result.error;
-                setNotice(
-                  "Si la cuenta puede recuperar el acceso, recibirá un enlace. Abrilo en este mismo navegador.",
+              }}
+            >
+              <label>
+                Correo administrativo
+                <input
+                  name="email"
+                  type="email"
+                  autoComplete="username"
+                  required
+                  maxLength={254}
+                />
+              </label>
+              <label>
+                Contraseña
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  maxLength={200}
+                />
+              </label>
+              <button
+                className={`button ${emailAccessEnabled ? "secondary" : "primary"}`}
+                disabled={busy || !client}
+              >
+                Ingresar
+              </button>
+            </form>
+          </AccessAlternative>
+          {!emailAccessEnabled &&
+            passkeysEnabled &&
+            deviceSupported() &&
+            client && (
+              <>
+                <button
+                  className="button secondary"
+                  disabled={busy || !client}
+                  onClick={() =>
+                    void action(async () => {
+                      if (!deviceSupported()) {
+                        setError(
+                          "Este navegador no admite el acceso con dispositivo. Usá tu correo y contraseña.",
+                        );
+                        return;
+                      }
+                      ceremony.current?.abort();
+                      ceremony.current = new AbortController();
+                      const r = await client!.auth.signInWithPasskey({
+                        options: { signal: ceremony.current.signal },
+                      });
+                      if (r.error) throw r.error;
+                      await inspect();
+                    })
+                  }
+                >
+                  Ingresar con huella, rostro o PIN
+                </button>
+                <p>
+                  Si tu cuenta lo requiere, completá después la segunda
+                  verificación con tu dispositivo o código de respaldo.
+                </p>
+              </>
+            )}
+          <AccessAlternative title="Recuperar contraseña">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const email = String(
+                  new FormData(e.currentTarget).get("email"),
                 );
-              });
-            }}
-          >
-            <h3>Recuperar contraseña</h3>
-            <label>
-              Correo de recuperación
-              <input
-                name="email"
-                type="email"
-                required
-                autoComplete="email"
-                maxLength={254}
-              />
-            </label>
-            <button className="button secondary" disabled={busy || !client}>
-              Enviar enlace de recuperación
-            </button>
-          </form>
+                void action(async () => {
+                  const redirect = new URL(location.pathname, location.origin);
+                  redirect.searchParams.set("admin_recovery", "1");
+                  redirect.hash = "/admin";
+                  const result = await client!.auth.resetPasswordForEmail(
+                    email,
+                    {
+                      redirectTo: redirect.toString(),
+                    },
+                  );
+                  if (result.error) throw result.error;
+                  setNotice(
+                    emailAccessEnabled
+                      ? "Si la cuenta puede recuperar el acceso, recibirá un enlace temporal. Abrilo en el dispositivo donde quieras recuperar tu acceso."
+                      : "Si la cuenta puede recuperar el acceso, recibirá un enlace. Abrilo en este mismo navegador.",
+                  );
+                });
+              }}
+            >
+              <h3>Recuperar contraseña</h3>
+              <label>
+                Correo de recuperación
+                <input
+                  name="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  maxLength={254}
+                />
+              </label>
+              <button className="button secondary" disabled={busy || !client}>
+                Enviar enlace de recuperación
+              </button>
+            </form>
+          </AccessAlternative>
         </div>
       )}
       {state === "mfa" && (
         <div className="admin-card admin-auth">
           <h2>Verificación en dos pasos</h2>
+          {emailAccessEnabled && recovery && (
+            <p>
+              Para cambiar tu contraseña, tu cuenta conserva una verificación
+              adicional. Completala con tu método de respaldo; no se pide para
+              el ingreso habitual.
+            </p>
+          )}
           <p>
             Confirmá que sos vos con un dispositivo registrado. También podés
             usar el código actual de tu aplicación de respaldo. Si es tu primer
@@ -673,7 +925,8 @@ export function AdminPage() {
               void action(async () => {
                 const { error } = await client!.auth.updateUser({ password });
                 if (error) throw error;
-                await logout();
+                setNotice("Contraseña actualizada. Cerrando tus sesiones…");
+                await logout(emailAccessEnabled ? "global" : "local");
                 setNotice(
                   "Contraseña actualizada. Volvé a ingresar con tu nueva contraseña.",
                 );
@@ -710,7 +963,7 @@ export function AdminPage() {
       )}
       {state === "ready" && !recovery && session && (
         <>
-          <AccessDevices onUnauthorized={deny} />
+          {!emailAccessEnabled && <AccessDevices onUnauthorized={deny} />}
           <AdminWorkspace userId={session.user.id} onUnauthorized={deny} />
         </>
       )}

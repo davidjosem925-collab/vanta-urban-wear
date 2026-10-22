@@ -1,6 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 import { readPublicSupabaseConfig } from "../../lib/supabase/config";
-export const ADMIN_AUTH_STORAGE_KEY = "vanta.admin.auth.v1";
+// Separate namespace preserves the legacy tab session during transition/rollback.
+const emailMode = import.meta.env.VITE_ADMIN_EMAIL_ACCESS_ENABLED === "true";
+export const ADMIN_AUTH_STORAGE_KEY = emailMode
+  ? "vanta.admin.email.auth.v1"
+  : "vanta.admin.auth.v1";
+export const adminSessionStorage = () =>
+  emailMode ? window.localStorage : window.sessionStorage;
 // Loaded only inside the admin chunk. Never shares auth storage with the storefront.
 function configure() {
   try {
@@ -9,22 +15,22 @@ function configure() {
       ? createClient(c.url, c.key, {
           auth: {
             storageKey: ADMIN_AUTH_STORAGE_KEY,
-            // Only PKCE verifier crosses tabs for email recovery. Sessions stay tab-scoped.
+            // PKCE verifier is shared. Legacy sessions stay tab-scoped; approved email mode persists separately.
             storage: {
               getItem: (key: string) =>
                 (key.endsWith("-code-verifier")
                   ? window.localStorage
-                  : window.sessionStorage
+                  : adminSessionStorage()
                 ).getItem(key),
               setItem: (key: string, value: string) =>
                 (key.endsWith("-code-verifier")
                   ? window.localStorage
-                  : window.sessionStorage
+                  : adminSessionStorage()
                 ).setItem(key, value),
               removeItem: (key: string) =>
                 (key.endsWith("-code-verifier")
                   ? window.localStorage
-                  : window.sessionStorage
+                  : adminSessionStorage()
                 ).removeItem(key),
             },
             persistSession: true,

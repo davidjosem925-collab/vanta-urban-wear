@@ -1262,3 +1262,17 @@
   color: #bdbdbd;
   font-size: 0.875rem;
 }
+
+/* Native disclosure keeps alternative access available without visual clutter. */
+.admin-access-alternative {
+  border-top: 1px solid #333;
+  padding-top: 1rem;
+}
+.admin-access-alternative summary {
+  cursor: pointer;
+  color: #e5e5e5;
+  padding: 0.5rem 0;
+}
+.admin-access-alternative form {
+  margin-top: 1rem;
+}

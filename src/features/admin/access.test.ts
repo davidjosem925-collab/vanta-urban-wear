@@ -35,6 +35,8 @@ describe("safe device authentication messages", () => {
 });
 
 it.each([
+  ["invalid_credentials", "El correo o la contraseña"],
+  ["admin_logout_unconfirmed", "Los datos quedaron ocultos"],
   ["mfa_verification_failed", "El código no es válido"],
   ["mfa_totp_verify_not_enabled", "no está habilitada"],
   ["mfa_totp_enroll_not_enabled", "no está habilitada"],

@@ -27,6 +27,10 @@ export function accessError(error: unknown): string {
     cause?: { name?: string };
     status?: number;
   };
+  if (e?.code === "invalid_credentials")
+    return "El correo o la contraseña no son correctos. Revisalos y volvé a intentar.";
+  if (e?.code === "admin_logout_unconfirmed")
+    return "No pudimos confirmar el cierre de sesión en el servidor. Los datos quedaron ocultos. Reintentá cerrar sesión antes de dejar este dispositivo.";
   if (
     e?.code === "mfa_totp_verify_not_enabled" ||
     e?.code === "mfa_totp_enroll_not_enabled"

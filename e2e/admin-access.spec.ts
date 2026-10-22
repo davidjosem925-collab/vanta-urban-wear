@@ -133,7 +133,9 @@ test("access: unsupported browser, cancelled ceremony and rejected password keep
     .getByLabel("Contraseña", { exact: true })
     .fill("incorrect-password");
   await page.getByRole("button", { name: "Ingresar", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("El servicio rechazó");
+  await expect(page.getByRole("alert")).toContainText(
+    "El correo o la contraseña",
+  );
   expect(state.writes).toEqual([]);
   expect(state.errors).toEqual([]);
   await noOverflow(page);

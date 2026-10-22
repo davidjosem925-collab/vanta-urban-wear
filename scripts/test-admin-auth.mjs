@@ -5,6 +5,7 @@ import { randomUUID, createHmac } from "node:crypto";
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
 mkdirSync("work", { recursive: true });
+const withEmail = process.argv.includes("--email");
 const withPasskeys = process.argv.includes("--passkeys");
 const passkeys = withPasskeys
   ? await import("./admin-passkeys-local.mjs")
@@ -181,6 +182,7 @@ try {
     "GOTRUE_MFA_TOTP_VERIFY_ENABLED=true",
     "-e",
     "GOTRUE_RATE_LIMIT_EMAIL_SENT=100",
+    ...(withEmail ? ["-e", "GOTRUE_MAILER_OTP_EXP=2"] : []),
     ...(withPasskeys
       ? [
           "-e",
@@ -197,7 +199,9 @@ try {
           `GOTRUE_WEBAUTHN_RP_ORIGINS=${gateway.origin}`,
         ]
       : []),
-    withPasskeys ? "supabase/gotrue:v2.197.0" : "supabase/gotrue:v2.177.0",
+    withPasskeys || withEmail
+      ? "supabase/gotrue:v2.197.0"
+      : "supabase/gotrue:v2.177.0",
   );
   const auth = address(names.auth, 9999);
   await until(async () => (await api(auth + "/health")).ok);
@@ -381,6 +385,20 @@ try {
     headers: { Authorization: `Bearer ${anon}` },
   });
   assert.deepEqual(await hidden.json(), []);
+  if (withEmail) {
+    const { testEmailAccess } = await import("./admin-email-local.mjs");
+    await testEmailAccess({
+      client,
+      call,
+      sql,
+      api,
+      auth,
+      serviceToken: jwt("service_role"),
+      until,
+      user,
+      values,
+    });
+  }
   sql(`update public.admin_profiles set active=false where user_id='${user}';`);
   assert.equal(await (await call(aal2, "is_admin")).json(), false);
   assert.equal(

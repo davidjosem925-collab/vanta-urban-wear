@@ -1,6 +1,12 @@
 # Acceso administrativo: dispositivos y recuperación
 
-Esta entrega no requiere migraciones. No modifica RLS, RPC, `is_admin()`, roles,
+> Nueva propuesta opcional de acceso sin TOTP cotidiano: ver
+> [transición por correo](admin-email-transition.md). No está aplicada remotamente;
+> el modo legado documentado a continuación sigue siendo el predeterminado.
+
+El modo legado de esta guía no requiere migraciones. La transición por correo
+sí propone una migración opcional, documentada arriba. El modo legado no modifica
+RLS, RPC, `is_admin()`, roles,
 reservas, vencimientos, catálogo ni la Edge Function. Las opciones de dispositivo
 están desactivadas por defecto. No se ha configurado el proyecto remoto ni se
 realizaron inicios de sesión o envíos de correo allí en esta auditoría.

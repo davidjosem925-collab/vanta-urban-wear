@@ -19,6 +19,7 @@ export async function fixture(
   page: Page,
   {
     member = true,
+    emailMode = false,
     aal = "aal2",
     logged = true,
     empty = false,
@@ -27,6 +28,7 @@ export async function fixture(
     totpDevices = [{ id: "factor", friendly_name: "fixture" }],
   }: {
     member?: boolean;
+    emailMode?: boolean;
     aal?: string;
     logged?: boolean;
     empty?: boolean;
@@ -123,8 +125,12 @@ export async function fixture(
   }
   if (logged)
     await page.addInitScript(
-      (s) => sessionStorage.setItem("vanta.admin.auth.v1", JSON.stringify(s)),
-      session(),
+      ({ s, emailMode }) =>
+        (emailMode ? localStorage : sessionStorage).setItem(
+          emailMode ? "vanta.admin.email.auth.v1" : "vanta.admin.auth.v1",
+          JSON.stringify(s),
+        ),
+      { s: session(), emailMode },
     );
   let imageRows: {
     id: string;
@@ -305,8 +311,11 @@ export async function fixture(
       if (path.startsWith("/rest/v1/rpc/")) {
         const name = path.split("/").at(-1),
           b = req.postDataJSON() ?? {};
+        if (name === "admin_access_mode")
+          return json(emailMode ? "email" : "mfa");
         if (name === "admin_membership") return json(member);
-        if (name === "is_admin") return json(member && currentAal === "aal2");
+        if (name === "is_admin")
+          return json(member && (emailMode || currentAal === "aal2"));
         writes.push(name!);
         if (name === "admin_save_product") {
           if (!b.p_id && exists && b.p_values.slug === current.slug)
