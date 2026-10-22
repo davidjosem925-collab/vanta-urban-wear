@@ -167,3 +167,11 @@ Checkout Pro / Orders API desde Edge Functions, webhook firmado, conciliación
 idempotente y reservas existentes. Apagado por defecto; sin despliegue ni SQL
 remoto, interfaz de pago o correos de confirmación en esta fase.
 [Configuración manual, pruebas y reversión](docs/stage-8-payments-backend.md).
+
+### Etapa 8 — Checkout de pagos de prueba (fase 3)
+
+La integración está preparada detrás de `VITE_MP_CHECKOUT_ENABLED=false`: Mercado
+Pago Checkout Pro sandbox, transferencia ficticia y consulta de estados desde el
+servidor. No se envían correos. Ver [activación, variables, pruebas y reversión](docs/stage-8-checkout-payments.md).
+No habilitar el flag antes de revisar/aprobar las migraciones y los despliegues
+manuales; no se realizó ningún cambio remoto.

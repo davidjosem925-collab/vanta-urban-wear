@@ -27,6 +27,8 @@ import type { useDemoOrder } from "../orders/useDemoOrder";
 
 export type CheckoutStep = "details" | "review" | "complete";
 type Props = {
+  paymentsEnabled?: boolean;
+  paymentSession?: boolean;
   step: CheckoutStep;
   draft: CheckoutDraft;
   setDraft: Dispatch<SetStateAction<CheckoutDraft>>;
@@ -37,6 +39,8 @@ type Props = {
   orderReceipt: Receipt | null;
 };
 export function CheckoutPage({
+  paymentsEnabled = false,
+  paymentSession = false,
   step,
   draft,
   setDraft,
@@ -163,6 +167,17 @@ export function CheckoutPage({
           ? "Demostración sin cobros ni pedidos comerciales. Las reservas de stock de demo duran 60 minutos."
           : "Una experiencia para explorar. Sin cobros, pedidos comerciales ni reservas de stock."}
       </p>
+      {paymentsEnabled && paymentSession && (
+        <div className="checkout-notice">
+          <p>
+            Ya hay un pedido de esta pestaña. Consultá su pago antes de crear
+            otra reserva.
+          </p>
+          <a className="button secondary" href="#/checkout/pago">
+            Consultar mi pago
+          </a>
+        </div>
+      )}
       {orders.enabled && !finished && orderFlow.error && (
         <div className="checkout-notice" role="alert">
           <p>{orderFlow.error}</p>
@@ -496,46 +511,58 @@ export function CheckoutPage({
                     }
                     aria-invalid={Boolean(errors.payment)}
                   >
-                    <legend>03 / Pago simulado</legend>
+                    <legend>
+                      {paymentsEnabled
+                        ? "03 / Pago de prueba"
+                        : "03 / Pago simulado"}
+                    </legend>
                     <p className="checkout-help" id="payment-help">
-                      Solo una selección visual. No se abrirán pasarelas, no se
-                      solicitarán datos financieros ni comprobantes.
+                      {paymentsEnabled
+                        ? "Mercado Pago abre su checkout de pruebas fuera de VANTA. Usá solo usuarios y tarjetas de prueba. La transferencia es ficticia: no transfieras dinero. VANTA no solicita tarjetas ni datos bancarios."
+                        : "Solo una selección visual. No se abrirán pasarelas, no se solicitarán datos financieros ni comprobantes."}
                     </p>
                     <div className="checkout-choices">
-                      {(["mercado_pago", "transfer", "cash"] as const).map(
-                        (method) => (
-                          <label
-                            key={method}
-                            className={`${draft.payment === method ? "is-selected" : ""} ${method === "cash" && draft.delivery !== "pickup" ? "is-unavailable" : ""}`}
-                          >
-                            <input
-                              type="radio"
-                              name="payment"
-                              value={method}
-                              checked={draft.payment === method}
-                              disabled={
-                                method === "cash" && draft.delivery !== "pickup"
-                              }
-                              onChange={() => {
-                                setDraft((d) => ({ ...d, payment: method }));
-                                setDeliveryMessage("");
-                                setErrors((e) => ({
-                                  ...e,
-                                  payment: undefined,
-                                }));
-                              }}
-                            />
-                            <span>
-                              {paymentNames[method]}
-                              <small>
-                                {method === "cash"
-                                  ? "Exclusivo para retiro en local ficticio"
-                                  : "Simulado · Sin cobro"}
-                              </small>
-                            </span>
-                          </label>
-                        ),
-                      )}
+                      {(paymentsEnabled
+                        ? (["mercado_pago", "transfer"] as const)
+                        : (["mercado_pago", "transfer", "cash"] as const)
+                      ).map((method) => (
+                        <label
+                          key={method}
+                          className={`${draft.payment === method ? "is-selected" : ""} ${method === "cash" && draft.delivery !== "pickup" ? "is-unavailable" : ""}`}
+                        >
+                          <input
+                            type="radio"
+                            name="payment"
+                            value={method}
+                            checked={draft.payment === method}
+                            disabled={
+                              method === "cash" && draft.delivery !== "pickup"
+                            }
+                            onChange={() => {
+                              setDraft((d) => ({ ...d, payment: method }));
+                              setDeliveryMessage("");
+                              setErrors((e) => ({
+                                ...e,
+                                payment: undefined,
+                              }));
+                            }}
+                          />
+                          <span>
+                            {paymentsEnabled && method === "mercado_pago"
+                              ? "Mercado Pago — Pruebas"
+                              : paymentNames[method]}
+                            <small>
+                              {method === "cash"
+                                ? "Exclusivo para retiro en local ficticio"
+                                : paymentsEnabled && method === "mercado_pago"
+                                  ? "Checkout Pro · Solo entorno de pruebas"
+                                  : paymentsEnabled
+                                    ? "Datos ficticios · No transfieras dinero"
+                                    : "Simulado · Sin cobro"}
+                            </small>
+                          </span>
+                        </label>
+                      ))}
                     </div>
                     {deliveryMessage && (
                       <p role="status" className="checkout-help">
@@ -586,9 +613,17 @@ export function CheckoutPage({
                     )}
                   </section>
                   <section>
-                    <h3>Método simulado</h3>
+                    <h3>
+                      {paymentsEnabled
+                        ? "Método de pago de prueba"
+                        : "Método simulado"}
+                    </h3>
                     <p>{paymentNames[draft.payment]}</p>
-                    <p>No se realizará ningún cobro.</p>
+                    <p>
+                      {paymentsEnabled && draft.payment === "mercado_pago"
+                        ? "Se abrirá Mercado Pago en modo de pruebas. No uses tarjetas ni dinero reales."
+                        : "No se realizará ningún cobro."}
+                    </p>
                   </section>
                 </div>
               ) : null}
@@ -620,7 +655,7 @@ export function CheckoutPage({
             !orderFlow.pending && (
               <p className="checkout-help" role="status">
                 Completá la verificación de seguridad para habilitar «Confirmar
-                pedido demo».
+                pedido demo» o continuar al pago de prueba.
               </p>
             )}
           <div className="checkout-actions">
@@ -639,11 +674,13 @@ export function CheckoutPage({
                 disabled={
                   !ready ||
                   !valid ||
+                  (paymentsEnabled && paymentSession) ||
                   orderFlow.pending ||
                   (orders.enabled && !challenge)
                 }
                 onClick={() => {
-                  if (!ready || !valid) return;
+                  if (!ready || !valid || (paymentsEnabled && paymentSession))
+                    return;
                   if (orders.enabled) {
                     // A token is single-use. Remove it immediately, not after the request.
                     const token = challenge;
@@ -661,7 +698,11 @@ export function CheckoutPage({
                 {orders.enabled
                   ? orderFlow.pending
                     ? "Confirmando…"
-                    : "Confirmar pedido demo"
+                    : paymentsEnabled
+                      ? draft.payment === "mercado_pago"
+                        ? "Ir a Mercado Pago de prueba"
+                        : "Crear pedido con transferencia demo"
+                      : "Confirmar pedido demo"
                   : "Finalizar demostración"}
               </button>
             ) : null}

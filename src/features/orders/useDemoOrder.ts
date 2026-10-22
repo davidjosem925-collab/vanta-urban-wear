@@ -15,7 +15,7 @@ const storageKey = "vanta.order-attempt.v1";
 /** Persist only capability + variant IDs/quantities/expected prices + demo choices. Never contact. */
 export function useDemoOrder(
   service: OrderService,
-  onSuccess: (r: Receipt, p: OrderPayload) => void,
+  onSuccess: (r: Receipt, p: OrderPayload, a: Attempt) => void,
 ) {
   const [pending, setPending] = useState(false),
     [error, setError] = useState("");
@@ -82,6 +82,7 @@ export function useDemoOrder(
       if (["expired", "cancelled"].includes(r.status))
         throw new Error("EXPIRED");
       // Call only after a validated server receipt. Never mark uncertain network results as success.
+      onSuccess(r, a.payload, a);
       try {
         sessionStorage.removeItem(storageKey);
       } catch {
@@ -89,7 +90,6 @@ export function useDemoOrder(
       }
       attempt.current = null;
       setRecoverable(false);
-      onSuccess(r, a.payload);
     } catch (e) {
       const code =
         e instanceof Error && Object.hasOwn(orderMessages, e.message)
@@ -122,7 +122,9 @@ export function useDemoOrder(
         "INVALID_RESPONSE",
         "HTTP_REJECTED",
       ].includes(code);
-      setRecoverable(uncertain && Boolean(attempt.current));
+      setRecoverable(
+        (uncertain || code === "STORAGE") && Boolean(attempt.current),
+      );
       setError(
         orderMessages[code] +
           (e instanceof OrderRequestError && e.status

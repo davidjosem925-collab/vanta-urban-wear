@@ -216,6 +216,7 @@ try {
     "202610200001_demo_orders.sql",
     "202610200002_admin_panel.sql",
     "202610230001_mp_test_backend.sql",
+    "202610230002_checkout_payments.sql",
   ])
     sql(readFileSync(`supabase/migrations/${file}`, "utf8"));
   const category = randomUUID();
@@ -350,6 +351,15 @@ try {
   const aal2 = (await client.auth.getSession()).data.session.access_token;
   assert.equal(await (await call(aal2, "is_admin")).json(), true);
   assert.equal((await call(aal2, "mp_test_settings")).status, 403);
+  assert.equal(
+    (
+      await call(aal2, "demo_transfer_payment", {
+        p_reference: randomUUID(),
+        p_owner: "a".repeat(64),
+      })
+    ).status,
+    403,
+  );
   console.log(
     "PASS real signed admin AAL1/AAL2 JWTs cannot execute payment backend RPCs; service JWT can",
   );

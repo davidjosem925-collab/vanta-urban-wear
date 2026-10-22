@@ -297,3 +297,9 @@ archivos**, lint, TypeScript frontend/Edge y build. PostgreSQL nativo aprobó lo
 Auth nativo (`auth`, `email`, `passkeys`) pasaron con la migración de pagos;
 `npm audit` devolvió **0 vulnerabilidades**. Las regresiones E2E de navegador y
 la ejecución Linux/Windows de CI se registran con su estado real en la PR.
+
+## Integración de checkout (fase 3)
+
+La interfaz y la migración incremental de retornos/transferencia se documentan en
+[stage-8-checkout-payments.md](stage-8-checkout-payments.md). Los resultados de esta
+fase amplían los de fase 2; la evidencia exacta del último commit está en la PR.

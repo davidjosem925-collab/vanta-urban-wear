@@ -1,3 +1,8 @@
+import {
+  paymentService,
+  type PaymentService,
+} from "../features/payments/service";
+import { usePayment } from "../features/payments/usePayment";
 import { ArrowIcon } from "../components/ArrowIcon";
 import { lazy, Suspense, useEffect, useState, useRef } from "react";
 import { CatalogPage } from "../features/catalog/CatalogPage";
@@ -20,6 +25,11 @@ import {
   type Receipt,
 } from "../features/orders/service";
 import { initialDraft } from "../features/checkout/model";
+const PaymentPage = lazy(() =>
+  import("../features/payments/PaymentPage").then((m) => ({
+    default: m.PaymentPage,
+  })),
+);
 const AdminPage = lazy(() =>
   import("../features/admin/AdminPage").then((m) => ({ default: m.AdminPage })),
 );
@@ -140,28 +150,37 @@ function Home({ service }: { service: CatalogService }) {
 export function App({
   service = catalogService,
   orders = orderService,
+  payments = paymentService,
 }: {
   service?: CatalogService;
   orders?: OrderService;
+  payments?: PaymentService;
 }) {
   return (
     <CartProvider service={service}>
-      <AppShell service={service} orders={orders} />
+      <AppShell service={service} orders={orders} payments={payments} />
     </CartProvider>
   );
 }
 function AppShell({
   service,
   orders,
+  payments,
 }: {
   service: CatalogService;
   orders: OrderService;
+  payments: PaymentService;
 }) {
   const cart = useCart();
   const cartRef = useRef(cart);
   cartRef.current = cart;
+  const paymentFlow = usePayment(payments);
   const [orderReceipt, setOrderReceipt] = useState<Receipt | null>(null);
-  const orderFlow = useDemoOrder(orders, (result, submitted) => {
+  const orderFlow = useDemoOrder(orders, (result, submitted, attempt) => {
+    const paymentEnabled =
+      payments.enabled &&
+      ["mercado_pago", "transfer"].includes(submitted.payment);
+    if (paymentEnabled) paymentFlow.attach(result, attempt);
     const current = cartRef.current;
     // Preserve additions made during a slow request; remove only confirmed quantities.
     for (const item of submitted.items) {
@@ -174,16 +193,30 @@ function AppShell({
     }
     setOrderReceipt(result);
     setCheckoutCompleted(true);
-    window.location.hash = "/checkout/finalizado";
+    window.location.hash = paymentEnabled
+      ? "/checkout/pago"
+      : "/checkout/finalizado";
   });
   const { route, routeKey } = useRoute();
   const [menuOpen, setMenuOpen] = useState(false);
   // Draft lives outside keyed route content, only in memory. No extra provider.
   const [checkoutDraft, setCheckoutDraft] = useState(() => ({
     ...initialDraft,
+    payment: payments.enabled
+      ? ("mercado_pago" as const)
+      : initialDraft.payment,
   }));
   const [checkoutCompleted, setCheckoutCompleted] = useState(false);
   const checkoutStep = route.kind === "checkout" ? route.step : null;
+  // Existing provider requests are immutable; old phase-2 return URLs must also recover safely.
+  useEffect(() => {
+    if (
+      payments.enabled &&
+      paymentFlow.session &&
+      (checkoutStep === "review" || checkoutStep === "complete")
+    )
+      window.location.hash = "/checkout/pago";
+  }, [payments.enabled, paymentFlow.session, checkoutStep]);
   useEffect(() => {
     if (checkoutStep && checkoutStep !== "complete") {
       setCheckoutCompleted(false);
@@ -193,16 +226,18 @@ function AppShell({
   const pageTitle =
     route.kind === "admin"
       ? "Administración"
-      : route.kind === "checkout"
-        ? "Checkout demo"
-        : route.kind === "product"
-          ? "Producto"
-          : route.kind === "category"
-            ? (menuCategories.find((c) => c.slug === route.slug)?.name ??
-              "Colección")
-            : route.kind === "catalog"
-              ? "Colección"
-              : "Urban Wear";
+      : route.kind === "payment"
+        ? "Pago de prueba"
+        : route.kind === "checkout"
+          ? "Checkout demo"
+          : route.kind === "product"
+            ? "Producto"
+            : route.kind === "category"
+              ? (menuCategories.find((c) => c.slug === route.slug)?.name ??
+                "Colección")
+              : route.kind === "catalog"
+                ? "Colección"
+                : "Urban Wear";
   useEffect(() => {
     document.title = `VANTA — ${pageTitle}`;
   }, [pageTitle]);
@@ -314,6 +349,17 @@ function AppShell({
           </div>
         </div>
       </header>
+      {payments.enabled && paymentFlow.session && route.kind !== "payment" && (
+        <nav
+          className="payment-access section-shell"
+          aria-label="Pedido de prueba en curso"
+        >
+          <span>Tu pedido de prueba sigue disponible.</span>
+          <a className="cart-text-button" href="#/checkout/pago">
+            Consultar mi pago
+          </a>
+        </nav>
+      )}
       <main id="contenido" tabIndex={-1} key={routeKey}>
         {route.kind === "home" && <Home service={service} />}
         {route.kind === "catalog" && <CatalogPage service={service} />}
@@ -322,6 +368,17 @@ function AppShell({
         )}
         {route.kind === "product" && (
           <ProductPage slug={route.slug} service={service} />
+        )}
+        {route.kind === "payment" && (
+          <Suspense
+            fallback={
+              <p className="section-shell" role="status">
+                Preparando consulta de pago…
+              </p>
+            }
+          >
+            <PaymentPage flow={paymentFlow} />
+          </Suspense>
         )}
         {route.kind === "checkout" && (
           <Suspense
@@ -332,6 +389,10 @@ function AppShell({
             }
           >
             <CheckoutPage
+              paymentsEnabled={payments.enabled}
+              paymentSession={
+                Boolean(paymentFlow.session) || paymentFlow.blocked
+              }
               orders={orders}
               orderFlow={orderFlow}
               orderReceipt={orderReceipt}
@@ -415,7 +476,9 @@ function AppShell({
         </div>
       </footer>
       <CartDrawer />
-      <CartFeedback suspendFloating={route.kind === "checkout"} />
+      <CartFeedback
+        suspendFloating={route.kind === "checkout" || route.kind === "payment"}
+      />
     </>
   );
 }

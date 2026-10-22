@@ -135,10 +135,10 @@ const reset = () =>
   sql(
     "delete from public.payment_events;delete from public.payments;delete from public.inventory_movements;delete from public.stock_reservations;delete from public.order_items;delete from public.orders;update public.inventory set on_hand=8,reserved=0;",
   );
-async function order() {
+async function order(method = "mercado_pago") {
   return JSON.parse(
     await sql(
-      `set role service_role;select public.demo_create_order('${randomUUID()}','${owner}','${payload}');`,
+      `set role service_role;select public.demo_create_order('${randomUUID()}','${owner}','${JSON.stringify({ ...JSON.parse(payload), payment: method })}');`,
     ),
   );
 }
@@ -164,6 +164,7 @@ try {
     "202610200001_demo_orders.sql",
     "202610200002_admin_panel.sql",
     "202610230001_mp_test_backend.sql",
+    "202610230002_checkout_payments.sql",
   ])
     await sql(readFileSync(`supabase/migrations/${name}`, "utf8"));
   await sql(`update public.mp_test_config set enabled=true,seller_id='123',application_id='456';
@@ -306,6 +307,34 @@ try {
   console.log(
     "PASS duplicate inbox receipt and worker leases serialize correctly",
   );
+  await reset();
+  o = await order("transfer");
+  const transferCall = `set role service_role;select public.demo_transfer_payment('${o.reference}','${owner}');`;
+  results = await Promise.all([sql(transferCall), sql(transferCall)]);
+  assert.deepEqual(JSON.parse(results[0]), JSON.parse(results[1]));
+  assert.equal(await sql("select count(*) from public.payments"), "1");
+  assert.equal(
+    await sql("select on_hand||':'||reserved from public.inventory"),
+    "8:2",
+  );
+  console.log(
+    "PASS simultaneous transfer preparation persists one pending payment and one reservation",
+  );
+  await sql(
+    "update public.orders set created_at=created_at-interval '61 minutes',reservation_expires_at=reservation_expires_at-interval '61 minutes'",
+  );
+  await Promise.all([
+    sql(transferCall),
+    sql("select public.demo_expire_orders()"),
+  ]);
+  assert.equal(JSON.parse(await sql(transferCall)).payment_status, "expired");
+  assert.equal(
+    await sql("select on_hand||':'||reserved from public.inventory"),
+    "8:0",
+  );
+  console.log(
+    "PASS transfer recovery and cron expiry release stock once without confirmation",
+  );
   assert.equal(
     await sql(
       "select has_table_privilege('service_role','public.payments','UPDATE')",
@@ -319,6 +348,9 @@ try {
     "f",
   );
   await reset();
+  await sql(
+    readFileSync("supabase/operations/stage-8-checkout-rollback.sql", "utf8"),
+  );
   await sql(readFileSync("supabase/operations/stage-8-rollback.sql", "utf8"));
   assert.equal(
     await sql(

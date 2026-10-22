@@ -187,7 +187,7 @@ export function makeHandler(
         if (
           !b ||
           typeof b !== "object" ||
-          !["create", "recover", "cancel"].includes(b.action) ||
+          !["create", "recover", "cancel", "transfer"].includes(b.action) ||
           typeof b.capability !== "string" ||
           !/^[a-f0-9]{64}$/.test(b.capability)
         )
@@ -202,6 +202,20 @@ export function makeHandler(
         const limit = await callRpc("demo_rate_limit", { p_actor: actor });
         if (limit.error) return reply(503, "UNAVAILABLE");
         if (limit.data !== true) return reply(429, "RATE_LIMITED");
+        if (b.action === "transfer") {
+          if (
+            Object.keys(b).sort().join(",") !== "action,capability,reference" ||
+            !uuid.test(b.reference)
+          )
+            return reply(400, "INVALID_REQUEST");
+          const result = await callRpc("demo_transfer_payment", {
+            p_reference: b.reference,
+            p_owner: owner,
+          });
+          return result.error
+            ? reply(503, "UNAVAILABLE")
+            : reply(200, "", result.data);
+        }
         if (b.action === "cancel") {
           if (
             Object.keys(b).sort().join(",") !== "action,capability,reference" ||
