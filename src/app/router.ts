@@ -28,7 +28,11 @@ export function parseRoute(hash: string): Route {
   }
 }
 export function useRoute() {
-  const [hash, setHash] = useState(window.location.hash);
+  const [hash, setHash] = useState(() =>
+    new URLSearchParams(window.location.search).get("admin_recovery") === "1"
+      ? "#/admin"
+      : window.location.hash,
+  );
   const previousHash = useRef(hash);
   useEffect(() => {
     function change() {

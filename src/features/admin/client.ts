@@ -1,5 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 import { readPublicSupabaseConfig } from "../../lib/supabase/config";
+// Separate namespace preserves the legacy tab session during transition/rollback.
+const emailMode = import.meta.env.VITE_ADMIN_EMAIL_ACCESS_ENABLED === "true";
+export const ADMIN_AUTH_STORAGE_KEY = emailMode
+  ? "vanta.admin.email.auth.v1"
+  : "vanta.admin.auth.v1";
+export const adminSessionStorage = () =>
+  emailMode ? window.localStorage : window.sessionStorage;
 // Loaded only inside the admin chunk. Never shares auth storage with the storefront.
 function configure() {
   try {
@@ -7,29 +14,30 @@ function configure() {
     return c
       ? createClient(c.url, c.key, {
           auth: {
-            storageKey: "vanta.admin.auth.v1",
-            // Only PKCE verifier crosses tabs for email recovery. Sessions stay tab-scoped.
+            storageKey: ADMIN_AUTH_STORAGE_KEY,
+            // PKCE verifier is shared. Legacy sessions stay tab-scoped; approved email mode persists separately.
             storage: {
               getItem: (key: string) =>
                 (key.endsWith("-code-verifier")
                   ? window.localStorage
-                  : window.sessionStorage
+                  : adminSessionStorage()
                 ).getItem(key),
               setItem: (key: string, value: string) =>
                 (key.endsWith("-code-verifier")
                   ? window.localStorage
-                  : window.sessionStorage
+                  : adminSessionStorage()
                 ).setItem(key, value),
               removeItem: (key: string) =>
                 (key.endsWith("-code-verifier")
                   ? window.localStorage
-                  : window.sessionStorage
+                  : adminSessionStorage()
                 ).removeItem(key),
             },
             persistSession: true,
             autoRefreshToken: true,
             detectSessionInUrl: false,
             flowType: "pkce",
+            experimental: { passkey: true, appendPkceFlowIdToRedirects: true },
           },
         })
       : null;
@@ -49,7 +57,7 @@ export class AdminError extends Error {
 export function safeError(error: unknown): Error {
   const e = error as { code?: string; message?: string };
   if (e?.code === "42501" || e?.message?.includes("FORBIDDEN"))
-    return new AdminError("Acceso no autorizado. Verificá tu sesión y MFA.");
+    return new AdminError("Acceso no autorizado. Volvé a verificar tu acceso.");
   if (e?.code === "23505")
     return new AdminError(
       "Esa dirección, código interno o combinación ya existe. Revisá los datos.",

@@ -18,9 +18,9 @@ test("admin: login, MFA step-up, logout and denial without data access", async (
   await expect(
     page.getByRole("heading", { name: "Productos", exact: true }),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "Continuar con MFA" }).click();
+  await page.getByRole("button", { name: "Usar código de respaldo" }).click();
   await page.getByLabel("Código de seis dígitos").fill("123456");
-  await page.getByRole("button", { name: "Verificar MFA" }).click();
+  await page.getByRole("button", { name: "Verificar código" }).click();
   await expect(
     page.getByRole("heading", { name: "Productos", exact: true }),
   ).toBeVisible();
@@ -90,7 +90,11 @@ test("admin: email recovery exchanges PKCE once and updates password only after 
     .fill("New-Fixture-Password-123!");
   await page.getByLabel("Repetir contraseña").fill("New-Fixture-Password-123!");
   await page.getByRole("button", { name: "Guardar contraseña" }).click();
-  await expect(page.getByText("Contraseña actualizada.")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Contraseña actualizada. Volvé a ingresar con tu nueva contraseña.",
+    ),
+  ).toBeVisible();
   await noOverflow(page);
   expect(state.errors).toEqual([]);
 });

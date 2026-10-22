@@ -19,16 +19,22 @@ export async function fixture(
   page: Page,
   {
     member = true,
+    emailMode = false,
     aal = "aal2",
     logged = true,
     empty = false,
     withPhoto = false,
+    withDevice = false,
+    totpDevices = [{ id: "factor", friendly_name: "fixture" }],
   }: {
     member?: boolean;
+    emailMode?: boolean;
     aal?: string;
     logged?: boolean;
     empty?: boolean;
     withPhoto?: boolean;
+    withDevice?: boolean;
+    totpDevices?: { id: string; friendly_name: string }[];
   } = {},
 ) {
   const errors: string[] = [],
@@ -52,15 +58,55 @@ export async function fixture(
     app_metadata: {},
     user_metadata: {},
     created_at: "2026-10-20T00:00:00Z",
-    factors: [
-      {
-        id: "factor",
-        factor_type: "totp",
-        status: "verified",
-        friendly_name: "fixture",
-      },
-    ],
+    factors: totpDevices.map((f) => ({
+      ...f,
+      factor_type: "totp",
+      status: "verified",
+    })),
   };
+  if (withDevice)
+    user.factors.push({
+      id: "device-factor",
+      factor_type: "webauthn",
+      status: "verified",
+      friendly_name: "Mi dispositivo",
+    });
+  let passkeys: { id: string; friendly_name: string; created_at: string }[] =
+    [];
+  let credentialId = "";
+  const challenge = Buffer.from(
+    "local-test-challenge-not-a-remote-token",
+  ).toString("base64url");
+  function creation() {
+    return {
+      challenge,
+      rp: { id: "localhost", name: "VANTA local test" },
+      user: {
+        id: Buffer.from(id).toString("base64url"),
+        name: "local-fixture",
+        displayName: "Local test",
+      },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+      timeout: 10000,
+      authenticatorSelection: {
+        residentKey: "required",
+        userVerification: "required",
+        authenticatorAttachment: "platform",
+      },
+      attestation: "none",
+    };
+  }
+  function requestOptions() {
+    return {
+      challenge,
+      rpId: "localhost",
+      userVerification: "required",
+      timeout: 10000,
+      ...(credentialId
+        ? { allowCredentials: [{ type: "public-key", id: credentialId }] }
+        : {}),
+    };
+  }
   function session(level = aal) {
     const payload = {
       sub: id,
@@ -79,8 +125,12 @@ export async function fixture(
   }
   if (logged)
     await page.addInitScript(
-      (s) => sessionStorage.setItem("vanta.admin.auth.v1", JSON.stringify(s)),
-      session(),
+      ({ s, emailMode }) =>
+        (emailMode ? localStorage : sessionStorage).setItem(
+          emailMode ? "vanta.admin.email.auth.v1" : "vanta.admin.auth.v1",
+          JSON.stringify(s),
+        ),
+      { s: session(), emailMode },
     );
   let imageRows: {
     id: string;
@@ -147,6 +197,72 @@ export async function fixture(
         // A rejected read, without the SDK's automatic transient GET retries.
         return json({ message: "fixture read failed" }, 400);
       }
+      if (path === "/auth/v1/passkeys/registration/options")
+        return json({ challenge_id: "registration", options: creation() });
+      if (path === "/auth/v1/passkeys/registration/verify") {
+        credentialId = req.postDataJSON().credential.id;
+        const d = {
+          id: "passkey",
+          friendly_name: "Dispositivo local",
+          created_at: new Date().toISOString(),
+        };
+        passkeys.push(d);
+        return json(d);
+      }
+      if (path === "/auth/v1/passkeys/authentication/options")
+        return json({
+          challenge_id: "authentication",
+          options: requestOptions(),
+        });
+      if (path === "/auth/v1/passkeys/authentication/verify") {
+        currentAal = "aal1";
+        return json(session("aal1"));
+      }
+      if (path === "/auth/v1/passkeys") return json(passkeys);
+      if (path === "/auth/v1/passkeys/passkey" && req.method() === "DELETE") {
+        passkeys = [];
+        return route.fulfill({ status: 204 });
+      }
+      if (path === "/auth/v1/factors" && req.method() === "POST") {
+        const f = {
+          id: "device-factor",
+          factor_type: "webauthn",
+          status: "unverified",
+          friendly_name: "Mi dispositivo",
+        };
+        user.factors.push(f);
+        return json({ ...f, type: "webauthn" });
+      }
+      if (path === "/auth/v1/factors/device-factor/challenge") {
+        const creating =
+          user.factors.find((f) => f.id === "device-factor")?.status !==
+          "verified";
+        return json({
+          id: "device-challenge",
+          type: "webauthn",
+          webauthn: {
+            type: creating ? "create" : "request",
+            credential_options: {
+              publicKey: creating ? creation() : requestOptions(),
+            },
+          },
+        });
+      }
+      if (path === "/auth/v1/factors/device-factor/verify") {
+        const b = req.postDataJSON();
+        if (b.webauthn.type === "create")
+          credentialId = b.webauthn.credential_response.id;
+        user.factors.find((f) => f.id === "device-factor")!.status = "verified";
+        currentAal = "aal2";
+        return json(session("aal2"));
+      }
+      if (
+        path === "/auth/v1/factors/device-factor" &&
+        req.method() === "DELETE"
+      ) {
+        user.factors = user.factors.filter((f) => f.id !== "device-factor");
+        return json({ id: "device-factor" });
+      }
       if (path === "/auth/v1/user") return json(user);
       if (path === "/auth/v1/logout") return route.fulfill({ status: 204 });
       if (path === "/auth/v1/token")
@@ -195,8 +311,11 @@ export async function fixture(
       if (path.startsWith("/rest/v1/rpc/")) {
         const name = path.split("/").at(-1),
           b = req.postDataJSON() ?? {};
+        if (name === "admin_access_mode")
+          return json(emailMode ? "email" : "mfa");
         if (name === "admin_membership") return json(member);
-        if (name === "is_admin") return json(member);
+        if (name === "is_admin")
+          return json(member && (emailMode || currentAal === "aal2"));
         writes.push(name!);
         if (name === "admin_save_product") {
           if (!b.p_id && exists && b.p_values.slug === current.slug)

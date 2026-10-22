@@ -148,8 +148,15 @@ Pedidos demo, reservas de 60 minutos y endpoint protegido; desactivado por defec
 
 ### Etapa 6 — Panel administrativo
 
-Acceso privado en `/#/admin`, con Supabase Auth, MFA obligatorio, catálogo,
+Acceso privado en `/#/admin`, con Supabase Auth, MFA obligatorio por defecto, catálogo,
 galería privada, variantes, ajustes de inventario auditados y pedidos demo de
 solo lectura. El checkout sigue sin pagos reales.
 [Activación manual, migración incremental y pruebas](docs/stage-6-admin.md).
 No aplicar de nuevo las migraciones anteriores ni publicar automáticamente.
+
+### Transición opcional de acceso para portfolio (PR #8)
+
+[Magic Link, autorización AAL1 revisable y reversión](docs/admin-email-transition.md).
+El modo nuevo está apagado por defecto y su migración no está aplicada al proyecto
+alojado. No ejecutar migraciones automáticamente: requiere aprobación del cambio
+de seguridad, configuración de correo y aceptación real del propietario.

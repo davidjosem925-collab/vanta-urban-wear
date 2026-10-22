@@ -5,6 +5,12 @@ import { randomUUID, createHmac } from "node:crypto";
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
 mkdirSync("work", { recursive: true });
+const withEmail = process.argv.includes("--email");
+const withPasskeys = process.argv.includes("--passkeys");
+const passkeys = withPasskeys
+  ? await import("./admin-passkeys-local.mjs")
+  : null;
+const gateway = await passkeys?.passkeyGateway();
 const prefix = `vanta-admin-test-${randomUUID().slice(0, 8)}`,
   net = prefix;
 const names = {
@@ -176,10 +182,30 @@ try {
     "GOTRUE_MFA_TOTP_VERIFY_ENABLED=true",
     "-e",
     "GOTRUE_RATE_LIMIT_EMAIL_SENT=100",
-    "supabase/gotrue:v2.177.0",
+    ...(withEmail ? ["-e", "GOTRUE_MAILER_OTP_EXP=2"] : []),
+    ...(withPasskeys
+      ? [
+          "-e",
+          "GOTRUE_PASSKEY_ENABLED=true",
+          "-e",
+          "GOTRUE_MFA_WEB_AUTHN_ENROLL_ENABLED=true",
+          "-e",
+          "GOTRUE_MFA_WEB_AUTHN_VERIFY_ENABLED=true",
+          "-e",
+          "GOTRUE_WEBAUTHN_RP_ID=localhost",
+          "-e",
+          "GOTRUE_WEBAUTHN_RP_DISPLAY_NAME=VANTA local test",
+          "-e",
+          `GOTRUE_WEBAUTHN_RP_ORIGINS=${gateway.origin}`,
+        ]
+      : []),
+    withPasskeys || withEmail
+      ? "supabase/gotrue:v2.197.0"
+      : "supabase/gotrue:v2.177.0",
   );
   const auth = address(names.auth, 9999);
   await until(async () => (await api(auth + "/health")).ok);
+  gateway?.connect(auth);
   sql(`create role anon;create role authenticated;create role service_role bypassrls;create role authenticator login noinherit password 'local-rest-only';grant anon,authenticated,service_role to authenticator;grant usage on schema public,auth to anon,authenticated,service_role;
  create or replace function auth.uid() returns uuid language sql stable as $$select (nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub')::uuid$$;
  create or replace function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$$;
@@ -317,6 +343,15 @@ try {
   assert.equal(verified.error, null);
   const aal2 = (await client.auth.getSession()).data.session.access_token;
   assert.equal(await (await call(aal2, "is_admin")).json(), true);
+  if (withPasskeys)
+    await passkeys.testPasskeys({
+      gateway,
+      anon,
+      session: (await client.auth.getSession()).data.session,
+      call,
+      backupFactor: enrolled.data.id,
+      backupCode: () => totp(enrolled.data.totp.secret),
+    });
   const saved = await call(aal2, "admin_save_product", {
     p_id: null,
     p_expected: null,
@@ -350,6 +385,20 @@ try {
     headers: { Authorization: `Bearer ${anon}` },
   });
   assert.deepEqual(await hidden.json(), []);
+  if (withEmail) {
+    const { testEmailAccess } = await import("./admin-email-local.mjs");
+    await testEmailAccess({
+      client,
+      call,
+      sql,
+      api,
+      auth,
+      serviceToken: jwt("service_role"),
+      until,
+      user,
+      values,
+    });
+  }
   sql(`update public.admin_profiles set active=false where user_id='${user}';`);
   assert.equal(await (await call(aal2, "is_admin")).json(), false);
   assert.equal(
@@ -381,6 +430,7 @@ try {
   );
   throw error;
 } finally {
+  await gateway?.close();
   for (const name of [names.rest, names.auth, names.pg]) {
     try {
       docker("rm", "-f", name);
