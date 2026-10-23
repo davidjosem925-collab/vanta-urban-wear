@@ -58,3 +58,42 @@ Fixtures del proveedor, sin credenciales reales; SQL ejecutado en PostgreSQL WAS
 ## Activación y reversión
 
 No hacen falta cambios de SQL, datos, secretos, flags o frontend. Si se aprueba más adelante el despliegue, las funciones que empaquetan estos módulos compartidos son `mp-checkout`, `mp-webhook` y `mp-reconcile`; no se ejecutan aquí. Reversión: volver a la revisión anterior de esas funciones. Es una reversión del diagnóstico, no de órdenes ni reservas; no borrar ni editar registros para revertir.
+
+## Evidencia posterior: `paid_amount` en GET (versión alojada 8)
+
+El diagnóstico proporcionado por el propietario identifica `operation=worker`, `dependency=get`, `validation=paid_amount`, `outcome=INVALID_PROVIDER_RESPONSE`, HTTP 200. El pedido observado sigue pendiente/unlinked con 8 intentos y una reserva. No se consultaron ni modificaron esos registros durante esta revisión.
+
+**Demostrado:** el recurso validado llegó al control del total pagado y falló al parsearlo o al compararlo con el importe congelado del pedido. Las verificaciones anteriores de identidad, aplicación, referencia y total de orden no rechazaron ese recurso. Las comprobaciones posteriores de fecha, productos y URL no llegaron a ejecutarse en esa respuesta; no se declaran verificadas. Sin identificadores en los logs, tampoco se debe usar un evento aislado como prueba de correlación con cualquier otro pedido.
+
+**No demostrado:** que el campo esté ausente, sea `null`, numérico, un texto inválido o un importe excesivo. Tampoco que el estado financiero del proveedor sea aprobado. Los 8 intentos no autorizan a reiniciar contadores, generar nuevas referencias ni vincular una orden por SQL.
+
+### Contrato y cambio mínimo
+
+La [guía oficial de Checkout Pro](https://www.mercadopago.com.ar/developers/es/docs/checkout-pro-orders/create-order) documenta `total_paid_amount` como **string**, monto pagado hasta el momento, y muestra texto decimal para una orden recién creada. La [referencia GET](https://www.mercadopago.com.ar/developers/es/reference/online-payments/checkout-pro/get-order/get) también ejemplifica texto decimal. Esos ejemplos no establecen que ausencia, `null` o un JSON number equivalgan a cero, ni autorizan una coerción numérica.
+
+El parser `cents()` permanece intacto: sin `Number(value)`, fallback, conversión de `null`/ausencia a cero ni reconstrucción desde transacciones o desde el importe del pedido. El mismo límite de total pagado y las mismas condiciones de aprobación siguen vigentes.
+
+Solo se añade `validation_detail` al diagnóstico interno para `validation=paid_amount`:
+
+| Categoría | Significado |
+| --- | --- |
+| `missing` | El campo no está presente (o es `undefined` en una fixture local; JSON no representa `undefined`). |
+| `null` | El valor JSON es `null`. |
+| `number` | El valor JSON es numérico; se rechaza incluso cero o un entero seguro. |
+| `invalid_text` | Es texto que `cents()` no acepta, por formato o por su rango máximo existente. |
+| `unsupported_type` | Booleano, objeto o arreglo. |
+| `exceeds_order` | Texto decimal aceptado por `cents()`, pero superior al total congelado de la orden. |
+
+Las categorías se registran **solo al rechazar**. No se registra el contenido, longitud, importe parseado, ID, token, contacto ni cuerpo del proveedor. Las respuestas públicas permanecen genéricas. Los textos decimales válidos, incluido cero explícito, conservan su tratamiento anterior y no implican pago aprobado.
+
+Ejemplo sintético:
+
+```json
+{"event":"mp_test_diagnostic","operation":"worker","outcome":"INVALID_PROVIDER_RESPONSE","dependency":"get","validation":"paid_amount","validation_detail":"missing","http_status":200}
+```
+
+La categoría real requiere observar un nuevo diagnóstico del proveedor tras un despliegue autorizado; este trabajo **no lo despliega ni llama a MP**. Si confirma ausencia/null/número, falta contrastar esa forma concreta con soporte/documentación de Mercado Pago antes de adaptar el contrato. Si confirma texto inválido o exceso, mantener el rechazo y verificarlo privadamente con el proveedor sin publicar importes o respuestas. No crear otra compra, resetear intentos ni alterar la reserva para diagnosticar.
+
+### Pruebas adicionales
+
+25 regresiones: campo realmente omitido, `undefined` de fixture, `null`, números (incluido cero), formatos de texto inválidos y límites, tipos no admitidos, total excesivo y textos válidos exactos. En integración aislada, cada categoría se propaga desde un GET de una orden no vinculada al diagnóstico del worker, manteniendo error público genérico, estado pending/unlinked, una reserva, stock intacto y un solo POST inicial simulado. No se expone la referencia ni la clave de idempotencia en los diagnósticos. `npm run check` aprobado: **741 pruebas / 52 archivos**, lint, TypeScript de Edge/frontend y build. Suite focalizada: **144 aprobadas**, incluidas en las 741. Sin pruebas con el proveedor real ni nuevas pruebas de navegador, porque el cambio solo añade categorías internas al backend. No se modifican datos, SQL, secretos ni funciones desplegadas.

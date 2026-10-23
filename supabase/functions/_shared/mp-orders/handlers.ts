@@ -125,7 +125,8 @@ export function makePaymentHandler(
       status = 200;
     let dependency: import("./core.ts").Dependency | undefined,
       upstream: number | undefined,
-      validation: import("./core.ts").Validation | undefined;
+      validation: import("./core.ts").Validation | undefined,
+      validationDetail: import("./core.ts").PaidAmountDetail | undefined;
     function failedDependency(error: unknown) {
       const failure =
         error instanceof PaymentError
@@ -135,6 +136,7 @@ export function makePaymentHandler(
       dependency = failure.dependency;
       upstream = failure.upstreamStatus;
       validation = failure.validation;
+      validationDetail = failure.validationDetail;
     }
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -308,6 +310,7 @@ export function makePaymentHandler(
       dependency = failure.dependency;
       upstream = failure.upstreamStatus;
       validation = failure.validation;
+      validationDetail = failure.validationDetail;
       return reply({ error: code }, failure.http);
     } finally {
       try {
@@ -318,6 +321,7 @@ export function makePaymentHandler(
           http_status: status,
           ...(dependency ? { dependency } : {}),
           ...(validation ? { validation } : {}),
+          ...(validationDetail ? { validation_detail: validationDetail } : {}),
           ...(upstream && upstream >= 100 && upstream <= 599
             ? { upstream_status: upstream }
             : {}),

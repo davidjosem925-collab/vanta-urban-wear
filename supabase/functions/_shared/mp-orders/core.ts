@@ -43,6 +43,14 @@ export type Validation =
   | "json_body"
   | "search_results"
   | "search_resource";
+/** Shape/category only, never the received amount or its length. */
+export type PaidAmountDetail =
+  | "missing"
+  | "null"
+  | "number"
+  | "invalid_text"
+  | "unsupported_type"
+  | "exceeds_order";
 export class PaymentError extends Error {
   constructor(
     readonly code: Code,
@@ -50,6 +58,7 @@ export class PaymentError extends Error {
     readonly dependency?: Dependency,
     readonly upstreamStatus?: number,
     readonly validation?: Validation,
+    readonly validationDetail?: PaidAmountDetail,
   ) {
     super(code);
   }
@@ -258,6 +267,7 @@ export type Diagnostic = {
   dependency?: Dependency;
   upstream_status?: number;
   validation?: Validation;
+  validation_detail?: PaidAmountDetail;
 };
 export type Sink = (entry: Diagnostic) => void;
 export type RpcName =
