@@ -603,3 +603,88 @@ it.each([
     expect(writes).toHaveLength(1);
   },
 );
+
+it("local TTL releases an unlinked reservation once despite incomplete canceled/expired GET; a late explicit approval cannot consume it", async () => {
+  providerState = { total_paid_amount: undefined };
+  expect((await handler("checkout")(checkout())).status).toBe(503);
+  providerState = {
+    status: "canceled",
+    status_detail: "expired",
+    total_paid_amount: undefined,
+  };
+  await db.exec("reset role");
+  await due();
+  await db.exec("set role service_role");
+  expect(await (await handler("worker")(worker())).json()).toMatchObject({
+    processed: 0,
+    retry: 1,
+  });
+  expect(diagnostics.at(-1)).toMatchObject({
+    dependency: "get",
+    validation: "paid_amount",
+    validation_detail: "missing",
+  });
+  expect(await value("select reserved v from public.inventory")).toBe(2);
+  expect(await value("select mp_order_id v from public.payments")).toBeNull();
+  // Only the disposable fixture clock is advanced. No provider or remote mutation.
+  await db.exec(
+    "reset role;update public.orders set created_at=created_at-interval '61 minutes',reservation_expires_at=reservation_expires_at-interval '61 minutes'",
+  );
+  expect(
+    (await db.query<{ v: number }>("select public.demo_expire_orders() v"))
+      .rows[0].v,
+  ).toBe(1);
+  expect(
+    (await db.query<{ v: number }>("select public.demo_expire_orders() v"))
+      .rows[0].v,
+  ).toBe(0);
+  await due();
+  await db.exec("set role service_role");
+  expect(await (await handler("worker")(worker())).json()).toMatchObject({
+    processed: 0,
+    retry: 1,
+  });
+  expect(await value("select status v from public.orders")).toBe("expired");
+  expect(await value("select status v from public.stock_reservations")).toBe(
+    "expired",
+  );
+  expect(await value("select reserved v from public.inventory")).toBe(0);
+  expect(await value("select on_hand v from public.inventory")).toBe(8);
+  expect(
+    await value(
+      "select count(*)::int v from public.inventory_movements where kind='expire'",
+    ),
+  ).toBe(1);
+  expect(
+    await value(
+      "select count(*)::int v from public.inventory_movements where kind='consume'",
+    ),
+  ).toBe(0);
+  expect(await value("select mp_order_id v from public.payments")).toBeNull();
+  expect(writes).toHaveLength(1);
+  // A separate authoritative, explicit financial snapshot goes to review after TTL.
+  providerState = {
+    status: "processed",
+    status_detail: "accredited",
+    total_paid_amount: "50001.00",
+  };
+  await db.exec("reset role");
+  await due();
+  await db.exec("set role service_role");
+  expect(await (await handler("worker")(worker())).json()).toMatchObject({
+    processed: 1,
+    retry: 0,
+  });
+  expect(await value("select mp_reconciliation v from public.payments")).toBe(
+    "review",
+  );
+  expect(await value("select status v from public.orders")).toBe("expired");
+  expect(await value("select reserved v from public.inventory")).toBe(0);
+  expect(await value("select on_hand v from public.inventory")).toBe(8);
+  expect(
+    await value(
+      "select count(*)::int v from public.inventory_movements where kind='consume'",
+    ),
+  ).toBe(0);
+  expect(writes).toHaveLength(1);
+});
