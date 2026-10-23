@@ -178,11 +178,17 @@ export function CheckoutPage({
       </nav>
       <p className="eyebrow">VANTA / TU SELECCIÓN</p>
       <h1 id="checkout-title">
-        {finished ? "Recorrido completado." : "Finalizar compra"}
+        {finished
+          ? orderReceipt
+            ? "Pedido registrado."
+            : "Selección confirmada."
+          : "Finalizar compra"}
       </h1>
-      <p className="checkout-intro">
-        Revisá tus datos y tu selección antes de confirmar.
-      </p>
+      {!finished && (
+        <p className="checkout-intro">
+          Revisá tus datos y tu selección antes de confirmar.
+        </p>
+      )}
       {paymentsEnabled && paymentSession && (
         <div className="checkout-notice">
           <p>
@@ -246,8 +252,8 @@ export function CheckoutPage({
           </span>
           <h2>
             {orderReceipt
-              ? "Pedido demo registrado."
-              : "Recorrido de compra completado."}
+              ? "Tu pedido fue registrado correctamente."
+              : "Tu selección está lista."}
           </h2>
           {orderReceipt && (
             <div role="status">
@@ -259,29 +265,25 @@ export function CheckoutPage({
               </p>
               <p>Subtotal: {formatARS(orderReceipt.subtotal_cents)} ARS</p>
               <p>
-                Reserva de demostración por 60 minutos desde la creación en el
-                servidor. Vence:{" "}
+                Reserva válida durante 60 minutos. Vence:{" "}
                 {new Date(orderReceipt.expires_at).toLocaleString("es-AR")}.
               </p>
-              <p>
-                {orderReceipt.email_requested
-                  ? "Se guardaron el detalle del pedido y tu correo cifrado para sus notificaciones."
-                  : "Solo los datos anonimizados de este pedido se guardaron."}{" "}
-                Las prendas registradas se retiraron del carrito.
-              </p>
+              <p>Las prendas registradas se retiraron del carrito.</p>
             </div>
           )}
-          <p>
-            {orderReceipt
-              ? "Este pedido de demostración quedó registrado. No es una operación comercial y no se realizó ningún cobro."
-              : "Esta es una demostración de VANTA Urban Wear. No se realizó ningún cobro ni se registró un pedido real."}
-          </p>
+          <aside className="checkout-notice" aria-label="Pedido de prueba">
+            <h3>Pedido de prueba</h3>
+            <p>
+              Esta operación pertenece a una tienda ficticia. No constituye una
+              compra real ni un comprobante de pago.
+            </p>
+          </aside>
           <p>
             {orderReceipt
               ? orderReceipt.email_requested
-                ? "Solicitamos el envío de las novedades por correo. La entrega puede demorar; no es una confirmación de pago ni un comprobante fiscal."
-                : "No se enviaron correos ni mensajes. No se realizó ningún cobro."
-              : "Tu selección sigue en el carrito. No se enviaron correos ni mensajes."}
+                ? "Solicitamos el envío de las novedades por correo. La entrega puede demorar."
+                : "No se enviaron correos ni mensajes."
+              : "Tu selección sigue en el carrito. No se registró un pedido ni se enviaron mensajes."}
           </p>
           <div className="checkout-actions">
             <a className="button primary" href="#/catalogo">
@@ -536,9 +538,7 @@ export function CheckoutPage({
                   >
                     <legend>03 / Método de pago</legend>
                     <p className="checkout-help" id="payment-help">
-                      {paymentsEnabled
-                        ? "Elegí cómo continuar. VANTA no solicita datos de tarjetas ni datos bancarios."
-                        : "Solo una selección visual. No se abrirán pasarelas, no se solicitarán datos financieros ni comprobantes."}
+                      Seleccioná cómo querés pagar.
                     </p>
                     <div className="checkout-choices">
                       {(paymentsEnabled

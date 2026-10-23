@@ -94,7 +94,7 @@ test("checkout vacío, recarga y acceso directo no simulan una finalización", a
   ).toHaveCount(0);
   await page.goto("/#/checkout/finalizado");
   await expect(
-    page.getByRole("heading", { name: "Recorrido de compra completado." }),
+    page.getByRole("heading", { name: "Tu selección está lista." }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Abrir carrito, 2 unidades" }),
@@ -157,10 +157,10 @@ test("checkout de retiro: validación accesible, edición, carrito compartido y 
   await capture(page, testInfo.outputPath("checkout-review.png"));
   await page.getByRole("button", { name: "Confirmar selección" }).click();
   await expect(
-    page.getByRole("heading", { name: "Recorrido de compra completado." }),
+    page.getByRole("heading", { name: "Tu selección está lista." }),
   ).toBeVisible();
   await expect(
-    page.getByText(/No se realizó ningún cobro ni se registró un pedido real/),
+    page.getByText(/Tu selección sigue en el carrito\. No se registró un pedido ni se enviaron mensajes\./),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Abrir carrito, 3 unidades" }),
@@ -244,7 +244,7 @@ test("checkout de envío: dirección, efectivo incompatible y revalidación de p
   ).toBeEnabled();
   await page.getByRole("button", { name: "Confirmar selección" }).click();
   await expect(
-    page.getByRole("heading", { name: "Recorrido de compra completado." }),
+    page.getByRole("heading", { name: "Tu selección está lista." }),
   ).toBeVisible();
   await onlyCartStored(page);
   await noOverflow(page);

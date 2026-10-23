@@ -45,6 +45,7 @@ async function begin(page: Page, manualChallenge = false) {
     ["Teléfono de contacto", "1155551234"],
   ])
     await page.getByLabel(name, { exact: true }).fill(value);
+  await expect(page.getByText("Seleccioná cómo querés pagar.", { exact: true })).toBeVisible();
   await page.getByRole("radio", { name: /Retiro en local/ }).click();
   await page.getByRole("radio", { name: /Efectivo/ }).click();
   await page.getByRole("button", { name: "Revisar pedido" }).click();
@@ -93,9 +94,35 @@ test("pedido auténticamente confirmado, carga, privacidad y vaciado solo tras r
   await noOverflow(page);
   release();
   await expect(
-    page.getByRole("heading", { name: "Pedido demo registrado." }),
+    page.getByRole("heading", {
+      name: "Tu pedido fue registrado correctamente.",
+    }),
   ).toBeVisible();
   await expect(page.getByText(result.reference, { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Pedido registrado.", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Pedido de prueba", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Esta operación pertenece a una tienda ficticia. No constituye una compra real ni un comprobante de pago.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Reserva válida durante 60 minutos\. Vence:/),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Revisá tus datos y tu selección antes de confirmar.", {
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Pago aprobado.", exact: true }),
+  ).toHaveCount(0);
+
   await expect(page.locator("#contenido")).toBeFocused();
   await expect
     .poll(() =>
@@ -141,7 +168,9 @@ test("error de red y reintento reutilizan la misma clave y no inventan confirmac
   ).toHaveLength(1);
   await page.getByRole("button", { name: "Confirmar pedido" }).click();
   await expect(
-    page.getByRole("heading", { name: "Pedido demo registrado." }),
+    page.getByRole("heading", {
+      name: "Tu pedido fue registrado correctamente.",
+    }),
   ).toBeVisible();
   expect(bodies[1].idempotency_key).toBe(bodies[0].idempotency_key);
   expect(bodies[1].capability).toBe(bodies[0].capability);
@@ -205,7 +234,9 @@ test("navegar durante la confirmación preserva unidades nuevas; respuesta invá
   ).toBeVisible();
   release();
   await expect(
-    page.getByRole("heading", { name: "Pedido demo registrado." }),
+    page.getByRole("heading", {
+      name: "Tu pedido fue registrado correctamente.",
+    }),
   ).toBeVisible();
   await expect
     .poll(() =>
@@ -247,7 +278,9 @@ test("recuperación tras recargar con carrito vacío no exige repetir formulario
     .getByRole("button", { name: "Consultar confirmación pendiente" })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Pedido demo registrado." }),
+    page.getByRole("heading", {
+      name: "Tu pedido fue registrado correctamente.",
+    }),
   ).toBeVisible();
   expect(bodies[1].idempotency_key).toBe(bodies[0].idempotency_key);
   expect(bodies[1].action).toBe("recover");
@@ -311,7 +344,9 @@ test("recuperación inexistente y token consumido retoman la misma selección si
   await page.getByRole("button", { name: "Verificar prueba" }).click();
   await confirm.click();
   await expect(
-    page.getByRole("heading", { name: "Pedido demo registrado." }),
+    page.getByRole("heading", {
+      name: "Tu pedido fue registrado correctamente.",
+    }),
   ).toBeVisible();
   expect(bodies).toHaveLength(4);
   for (const body of bodies) {

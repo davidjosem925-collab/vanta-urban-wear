@@ -59,3 +59,9 @@ npm run test:e2e:payments
 ```
 
 El test utiliza proveedores simulados. No prueba una compra real sandbox ni entrega de correo. Esta tarea no publica en Vercel, cambia secretos, modifica servicios o aplica migraciones. La activación de etapa 8 continúa siendo una decisión independiente con su propia guía.
+
+## Ajuste final de confirmación (PR #11)
+
+El método de pago muestra «Seleccioná cómo querés pagar.». Con una respuesta de pedido del servidor, la finalización muestra «Pedido registrado.» y «Tu pedido fue registrado correctamente.», manteniendo referencia, subtotal, vencimiento y navegación. Se retira el subtítulo previo a confirmar y se concentra el aviso en «Pedido de prueba»: «Esta operación pertenece a una tienda ficticia. No constituye una compra real ni un comprobante de pago.».
+
+Con la creación de pedidos deshabilitada no se afirma que un pedido haya sido registrado: se muestra «Selección confirmada.» / «Tu selección está lista.» y se aclara que sigue en el carrito. Las etiquetas de pago son «Pago pendiente.», «Pago aprobado.», «Pago rechazado.» y «Pago cancelado.», sin cambiar sus condiciones. La aprobación sigue requiriendo estado aprobado, conciliación resuelta y pedido confirmado/preparando/entregado, verificados por el servidor. No se activan flags ni servicios.

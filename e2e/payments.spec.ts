@@ -169,7 +169,7 @@ test("checkout externo, retorno no autoritativo, recuperación al recargar y apr
   approved = true;
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Pago de prueba aprobado." }),
+    page.getByRole("heading", { name: "Pago aprobado." }),
   ).toBeVisible();
   expect(orders).toHaveLength(1);
   for (const b of bodies) {
@@ -305,7 +305,7 @@ test("rechazo y cancelación provienen del servidor; rutas antiguas y navegació
     button.click();
   });
   await expect(
-    page.getByRole("heading", { name: "Pago de prueba rechazado." }),
+    page.getByRole("heading", { name: "Pago rechazado." }),
   ).toBeVisible();
   expect(orders).toHaveLength(1);
   await page
@@ -320,7 +320,7 @@ test("rechazo y cancelación provienen del servidor; rutas antiguas y navegació
   await page.goto("/?status=approved#/checkout/finalizado");
   await expect(page).toHaveURL(/#\/checkout\/pago$/);
   await expect(
-    page.getByRole("heading", { name: "Operación cancelada." }),
+    page.getByRole("heading", { name: "Pago cancelado." }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Continuar en Mercado Pago" }),
