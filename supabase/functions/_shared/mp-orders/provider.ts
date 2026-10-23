@@ -7,6 +7,8 @@ import {
   testOrder,
   type Context,
   type Settings,
+  type Dependency,
+  type Validation,
 } from "./core.ts";
 import { jsonBody } from "./core.ts";
 export type Snapshot = {
@@ -33,61 +35,100 @@ export type Snapshot = {
     | "partial"
     | "unknown";
 };
-export function snapshot(raw: unknown, c: Context, settings: Settings) {
-  const v = record(raw);
+export function snapshot(
+  raw: unknown,
+  c: Context,
+  settings: Settings,
+  dependency: Dependency = "get",
+) {
+  // Name the first failing boundary without retaining any response values.
+  function field<T>(validation: Validation, read: () => T): T {
+    try {
+      return read();
+    } catch {
+      throw new PaymentError(
+        "INVALID_PROVIDER_RESPONSE",
+        503,
+        dependency,
+        undefined,
+        validation,
+      );
+    }
+  }
+  function requireField(validation: Validation, valid: boolean) {
+    if (!valid)
+      field(validation, () => {
+        throw new Error();
+      });
+  }
+  const v = field("response_object", () => record(raw));
   const id = String(v.id);
-  if (
-    !testOrder.test(id) ||
-    (c.provider_order_id && c.provider_order_id !== id) ||
-    v.type !== "online" ||
-    v.processing_mode !== "manual" ||
-    v.currency !== "ARS" ||
-    v.country_code !== "ARG" ||
-    v.external_reference !== c.reference ||
-    identifier(v.user_id) !== c.seller_id ||
-    c.seller_id !== settings.seller ||
-    identifier(record(v.integration_data).application_id) !==
-      c.application_id ||
-    c.application_id !== settings.application ||
-    cents(v.total_amount) !== c.amount_cents ||
-    v.live_mode === true
-  )
-    throw new PaymentError("INVALID_PROVIDER_RESPONSE");
-  const paid = cents(v.total_paid_amount);
-  if (
-    paid > c.amount_cents ||
-    typeof v.last_updated_date !== "string" ||
-    !Number.isFinite(Date.parse(v.last_updated_date)) ||
-    Date.parse(v.last_updated_date) > Date.now() + 300000
-  )
-    throw new PaymentError("INVALID_PROVIDER_RESPONSE");
+  requireField("order_id", testOrder.test(id));
+  requireField(
+    "bound_order_id",
+    !c.provider_order_id || c.provider_order_id === id,
+  );
+  requireField("order_type", v.type === "online");
+  requireField("processing_mode", v.processing_mode === "manual");
+  requireField("currency", v.currency === "ARS");
+  requireField("country", v.country_code === "ARG");
+  requireField("reference", v.external_reference === c.reference);
+  requireField(
+    "seller",
+    field("seller", () => identifier(v.user_id)) === c.seller_id &&
+      c.seller_id === settings.seller,
+  );
+  requireField(
+    "application",
+    field("application", () =>
+      identifier(record(v.integration_data).application_id),
+    ) === c.application_id && c.application_id === settings.application,
+  );
+  requireField(
+    "total_amount",
+    field("total_amount", () => cents(v.total_amount)) === c.amount_cents,
+  );
+  requireField("live_mode", v.live_mode !== true);
+  const paid = field("paid_amount", () => cents(v.total_paid_amount));
+  requireField("paid_amount", paid <= c.amount_cents);
+  requireField(
+    "updated_at",
+    typeof v.last_updated_date === "string" &&
+      Number.isFinite(Date.parse(v.last_updated_date)) &&
+      Date.parse(v.last_updated_date) <= Date.now() + 300000,
+  );
   // Check provider items against frozen SERVER snapshots, not against the current catalog/client.
-  const expected = record(c.request).items;
-  if (
-    !Array.isArray(v.items) ||
-    !Array.isArray(expected) ||
-    v.items.length !== expected.length ||
-    v.items.length > 12
-  )
-    throw new PaymentError("INVALID_PROVIDER_RESPONSE");
+  const expected = field("items", () => record(c.request).items);
+  requireField(
+    "items",
+    Array.isArray(v.items) &&
+      Array.isArray(expected) &&
+      v.items.length === expected.length &&
+      v.items.length <= 12,
+  );
   const canonical = (items: unknown[]) =>
     items
       .map((raw) => {
-        const i = record(raw);
-        if (
-          !Number.isInteger(i.quantity) ||
-          Number(i.quantity) < 1 ||
-          Number(i.quantity) > 3 ||
-          typeof i.title !== "string"
-        )
-          throw new PaymentError("INVALID_PROVIDER_RESPONSE");
-        return JSON.stringify([i.title, i.quantity, cents(i.unit_price)]);
+        const i = field("item_fields", () => record(raw));
+        requireField(
+          "item_fields",
+          Number.isInteger(i.quantity) &&
+            Number(i.quantity) >= 1 &&
+            Number(i.quantity) <= 3 &&
+            typeof i.title === "string",
+        );
+        return JSON.stringify([
+          i.title,
+          i.quantity,
+          field("item_fields", () => cents(i.unit_price)),
+        ]);
       })
       .sort();
-  if (
-    JSON.stringify(canonical(v.items)) !== JSON.stringify(canonical(expected))
-  )
-    throw new PaymentError("INVALID_PROVIDER_RESPONSE");
+  requireField(
+    "item_match",
+    JSON.stringify(canonical(v.items as unknown[])) ===
+      JSON.stringify(canonical(expected as unknown[])),
+  );
   let state: Snapshot["state"] = "review",
     detail: Snapshot["detail"] = "unknown";
   if (
@@ -121,7 +162,7 @@ export function snapshot(raw: unknown, c: Context, settings: Settings) {
   }
   return {
     id,
-    url: checkoutUrl(v.checkout_url, id),
+    url: field("checkout_url", () => checkoutUrl(v.checkout_url, id)),
     value: {
       reference: c.reference,
       seller_id: c.seller_id,
@@ -129,7 +170,7 @@ export function snapshot(raw: unknown, c: Context, settings: Settings) {
       currency: "ARS",
       amount_cents: c.amount_cents,
       paid_cents: paid,
-      updated_at: v.last_updated_date,
+      updated_at: v.last_updated_date as string,
       state,
       detail,
     } satisfies Snapshot,
@@ -177,6 +218,7 @@ export class Provider {
         503,
         dependency,
         response.status,
+        "json_body",
       );
     }
   }
@@ -239,11 +281,23 @@ export class Provider {
       ),
     );
     if (!Array.isArray(list.data) || list.data.length > 1)
-      throw new PaymentError("PAYMENT_CONFLICT", 409);
+      throw new PaymentError(
+        "PAYMENT_CONFLICT",
+        409,
+        "search",
+        undefined,
+        "search_results",
+      );
     if (!list.data.length) return null;
     const v = record(list.data[0]);
     if (v.external_reference !== c.reference || !testOrder.test(String(v.id)))
-      throw new PaymentError("INVALID_PROVIDER_RESPONSE");
+      throw new PaymentError(
+        "INVALID_PROVIDER_RESPONSE",
+        503,
+        "search",
+        undefined,
+        "search_resource",
+      );
     return this.get(String(v.id));
   }
   async cancel(c: Context) {
