@@ -61,9 +61,9 @@ export const provinces = [
 ];
 export const paymentNames: Record<DemoPayment, string> = {
   "": "Por elegir",
-  mercado_pago: "Mercado Pago — Demo",
-  transfer: "Transferencia bancaria — Demo",
-  cash: "Efectivo — Demo",
+  mercado_pago: "Mercado Pago",
+  transfer: "Transferencia bancaria",
+  cash: "Efectivo",
 };
 export const shippingNotice =
   "Envío a coordinar. El costo de envío no está incluido en el subtotal.";
@@ -129,6 +129,6 @@ export function validateDraft(d: CheckoutDraft): Errors {
     !d.payment ||
     (d.payment === "cash" && d.delivery !== "pickup")
   )
-    e.payment = "Elegí un método de pago simulado compatible con la entrega.";
+    e.payment = "Elegí un método de pago compatible con la entrega.";
   return e;
 }

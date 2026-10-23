@@ -1,3 +1,4 @@
+import { productTitle } from "../catalog/presentation";
 import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import { Photo } from "../../components/Photo";
 import { useCart } from "../cart/context";
@@ -88,7 +89,7 @@ export function CheckoutSummary({
                 <h3>
                   {entry.product ? (
                     <a href={productHref(entry.product.slug)}>
-                      {entry.product.name}
+                      {productTitle(entry.product.name)}
                     </a>
                   ) : (
                     "Prenda por verificar"
@@ -124,24 +125,22 @@ export function CheckoutSummary({
           <dt>Entrega</dt>
           <dd>
             {draft.delivery === "pickup"
-              ? "Retiro ficticio · Sin costo"
+              ? "Retiro en local · Sin costo"
               : "Envío a coordinar"}
           </dd>
         </div>
         <div>
-          <dt>Pago simulado</dt>
+          <dt>Método de pago</dt>
           <dd>{paymentNames[draft.payment]}</dd>
         </div>
       </dl>
-      <p className="checkout-help">
-        {draft.delivery === "shipping"
-          ? shippingNotice
-          : "Retiro en local ficticio sin costo."}
-      </p>
+      {draft.delivery === "shipping" && (
+        <p className="checkout-help">{shippingNotice}</p>
+      )}
       <p className="checkout-help">
         {reservesOnConfirm
-          ? "Stock por confirmar. La disponibilidad y la reserva demo se validan al confirmar el pedido. El subtotal es orientativo, no una cotización definitiva."
-          : "Stock por confirmar. No se reserva inventario. El subtotal es orientativo, no una cotización definitiva."}
+          ? "La disponibilidad se verifica al confirmar el pedido."
+          : "Tu selección no reserva prendas."}
       </p>
     </aside>
   );

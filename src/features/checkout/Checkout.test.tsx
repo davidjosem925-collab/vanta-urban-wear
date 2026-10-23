@@ -68,7 +68,7 @@ async function start() {
   await screen.findByLabelText("Nombre");
   await waitFor(() =>
     expect(
-      screen.getByRole("button", { name: "Revisar demostración" }),
+      screen.getByRole("button", { name: "Revisar pedido" }),
     ).toBeEnabled(),
   );
   return app;
@@ -83,17 +83,15 @@ function contact() {
     fireEvent.change(screen.getByLabelText(name), { target: { value } });
 }
 function pickup() {
-  fireEvent.click(
-    screen.getByRole("radio", { name: /Retiro en local ficticio/ }),
-  );
-  fireEvent.click(screen.getByRole("radio", { name: /Efectivo — Demo/ }));
+  fireEvent.click(screen.getByRole("radio", { name: /Retiro en local/ }));
+  fireEvent.click(screen.getByRole("radio", { name: /Efectivo/ }));
 }
 async function review() {
-  fireEvent.click(screen.getByRole("button", { name: "Revisar demostración" }));
+  fireEvent.click(screen.getByRole("button", { name: "Revisar pedido" }));
   await screen.findByRole("heading", { name: "Todo en su lugar." });
   await waitFor(() =>
     expect(
-      screen.getByRole("button", { name: "Finalizar demostración" }),
+      screen.getByRole("button", { name: "Confirmar selección" }),
     ).toBeEnabled(),
   );
 }
@@ -132,9 +130,9 @@ describe("Checkout integrado con el carrito existente", () => {
     ).toBeVisible();
     expect(within(summary).getByText("Cantidad: 2")).not.toBeVisible();
     expect(
-      within(summary).getByText("Retiro ficticio · Sin costo"),
+      within(summary).getByText("Retiro en local · Sin costo"),
     ).toBeVisible();
-    expect(within(summary).getByText("Efectivo — Demo")).toBeVisible();
+    expect(within(summary).getByText("Efectivo")).toBeVisible();
     fireEvent.click(toggle);
     await waitFor(() => expect(toggle).toHaveTextContent("Ocultar productos"));
     expect(toggle).toHaveAttribute("aria-expanded", "true");
@@ -146,9 +144,7 @@ describe("Checkout integrado con el carrito existente", () => {
       await within(summary).findByText("$ 50.001", { exact: true }),
     ).toBeVisible();
     expect(screen.getByLabelText("Nombre")).toHaveValue("Lucía");
-    expect(
-      screen.getByRole("radio", { name: /Efectivo — Demo/ }),
-    ).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Efectivo/ })).toBeChecked();
     fireEvent.click(
       within(summary).getByRole("button", { name: "Modificar carrito" }),
     );
@@ -187,7 +183,7 @@ describe("Checkout integrado con el carrito existente", () => {
         }),
       ).toBeVisible();
       expect(
-        screen.queryByRole("button", { name: "Finalizar demostración" }),
+        screen.queryByRole("button", { name: "Confirmar selección" }),
       ).not.toBeInTheDocument();
       expect(
         screen.getByRole("link", { name: "Explorar la colección" }),
@@ -199,9 +195,7 @@ describe("Checkout integrado con el carrito existente", () => {
     fireEvent.change(screen.getByLabelText("Apellido"), {
       target: { value: "Pérez" },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Revisar demostración" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Revisar pedido" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Revisá los campos",
     );
@@ -221,22 +215,16 @@ describe("Checkout integrado con el carrito existente", () => {
     await start();
     contact();
     expect(screen.getByLabelText("Provincia")).toBeVisible();
-    expect(
-      screen.getByRole("radio", { name: /Efectivo — Demo/ }),
-    ).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /Efectivo/ })).toBeDisabled();
     pickup();
     expect(screen.queryByLabelText("Provincia")).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("radio", { name: /Efectivo — Demo/ }),
-    ).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Efectivo/ })).toBeChecked();
     const total = screen.getByRole("complementary", {
       name: "Resumen de la selección",
     });
     expect(within(total).getByText("$ 50.001", { exact: true })).toBeVisible();
     fireEvent.click(screen.getByRole("radio", { name: /Envío a domicilio/ }));
-    expect(
-      screen.getByRole("radio", { name: /Efectivo — Demo/ }),
-    ).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: /Efectivo/ })).not.toBeChecked();
     expect(screen.getByText(/Efectivo solo está disponible/)).toBeVisible();
     expect(screen.getByLabelText("Nombre")).toHaveValue("Lucía");
   });
@@ -251,11 +239,9 @@ describe("Checkout integrado con el carrito existente", () => {
       expect(screen.getByLabelText("Nombre")).toHaveValue("Lucía"),
     );
     expect(
-      screen.getByRole("radio", { name: /Retiro en local ficticio/ }),
+      screen.getByRole("radio", { name: /Retiro en local/ }),
     ).toBeChecked();
-    expect(
-      screen.getByRole("radio", { name: /Efectivo — Demo/ }),
-    ).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Efectivo/ })).toBeChecked();
     route("#/catalogo");
     await screen.findByRole("heading", { name: /Toda la colección/ });
     route("#/checkout");
@@ -265,16 +251,16 @@ describe("Checkout integrado con el carrito existente", () => {
     );
     await review();
     fireEvent.click(
-      screen.getByRole("button", { name: "Finalizar demostración" }),
+      screen.getByRole("button", { name: "Confirmar selección" }),
     );
     expect(
       await screen.findByRole("heading", {
-        name: "Recorrido de compra completado.",
+        name: "Tu selección está lista.",
       }),
     ).toBeVisible();
     expect(
       screen.getByText(
-        /No se realizó ningún cobro ni se registró un pedido real/,
+        /Tu selección sigue en el carrito\. No se registró un pedido ni se enviaron mensajes\./,
       ),
     ).toBeVisible();
     expect(
@@ -307,7 +293,7 @@ describe("Checkout integrado con el carrito existente", () => {
     route("#/checkout/finalizado");
     expect(
       screen.queryByRole("heading", {
-        name: "Recorrido de compra completado.",
+        name: "Tu selección está lista.",
       }),
     ).not.toBeInTheDocument();
     route("#/checkout");
@@ -335,7 +321,7 @@ describe("Checkout integrado con el carrito existente", () => {
     pickup();
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Revisar demostración" }),
+        screen.getByRole("button", { name: "Revisar pedido" }),
       ).toBeEnabled(),
     );
     await review();
@@ -354,7 +340,7 @@ describe("Checkout integrado con el carrito existente", () => {
       await screen.findByText(/No pudimos verificar toda la selección/),
     ).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "Finalizar demostración" }),
+      screen.getByRole("button", { name: "Confirmar selección" }),
     ).toBeDisabled();
     offline = false;
     fireEvent.click(
@@ -362,14 +348,14 @@ describe("Checkout integrado con el carrito existente", () => {
     );
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Finalizar demostración" }),
+        screen.getByRole("button", { name: "Confirmar selección" }),
       ).toBeEnabled(),
     );
     current = { ...current, variants: [] };
     act(() => window.dispatchEvent(new Event("focus")));
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Finalizar demostración" }),
+        screen.getByRole("button", { name: "Confirmar selección" }),
       ).toBeDisabled(),
     );
     expect(
@@ -434,14 +420,12 @@ it.each([true, false])(
     pickup();
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Revisar demostración" }),
+        screen.getByRole("button", { name: "Revisar pedido" }),
       ).toBeEnabled(),
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Revisar demostración" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Revisar pedido" }));
     const button = await screen.findByRole("button", {
-      name: "Confirmar pedido demo",
+      name: "Confirmar pedido",
     });
     expect(button).toBeDisabled();
     expect(confirm).not.toHaveBeenCalled();
@@ -460,21 +444,41 @@ it.each([true, false])(
     expect(confirm.mock.calls[0][1]).toBe("fixture-token");
     if (accepted) {
       expect(
-        await screen.findByRole("heading", { name: "Pedido demo registrado." }),
+        await screen.findByRole("heading", {
+          name: "Tu pedido fue registrado correctamente.",
+        }),
       ).toBeVisible();
+      expect(
+        screen.getByRole("heading", {
+          name: "Pedido registrado.",
+        }),
+      ).toBeVisible();
+      expect(
+        screen.getByRole("heading", { name: "Pedido de prueba" }),
+      ).toBeVisible();
+      expect(
+        screen.queryByText(
+          "Revisá tus datos y tu selección antes de confirmar.",
+        ),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("heading", { name: "Pago aprobado." }),
+      ).not.toBeInTheDocument();
       expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).lines).toHaveLength(
         0,
       );
     } else {
       expect(await screen.findByRole("alert")).toHaveTextContent(/precio/i);
       expect(
-        screen.queryByRole("heading", { name: "Pedido demo registrado." }),
+        screen.queryByRole("heading", {
+          name: "Tu pedido fue registrado correctamente.",
+        }),
       ).not.toBeInTheDocument();
       expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).lines).toHaveLength(
         1,
       );
       expect(
-        screen.getByRole("button", { name: "Confirmar pedido demo" }),
+        screen.getByRole("button", { name: "Confirmar pedido" }),
       ).toBeDisabled();
     }
   },

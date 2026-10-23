@@ -6,6 +6,10 @@ import { categories, product } from "../src/test/fixtures";
 export async function catalog(page: Page) {
   const state = {
     price: product.price_cents,
+    name: product.name,
+    description: product.description,
+    slug: product.slug,
+    imageAlt: undefined as string | undefined,
     photos: [] as string[],
     signatures: 0,
     categoryId: product.category_id,
@@ -46,7 +50,8 @@ export async function catalog(page: Page) {
   await page.route("**/*", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    if (["http://127.0.0.1:4175", "http://127.0.0.1:4176"].includes(url.origin)) return route.continue();
+    if (["http://127.0.0.1:4175", "http://127.0.0.1:4176"].includes(url.origin))
+      return route.continue();
     if (url.hostname !== "vanta-cart-fixture.supabase.co") {
       state.unexpected.push(request.url());
       return route.abort();
@@ -69,6 +74,9 @@ export async function catalog(page: Page) {
           json: [
             {
               ...product,
+              name: state.name,
+              description: state.description,
+              slug: state.slug,
               category_id: state.categoryId,
               price_cents: state.price,
             },
@@ -82,7 +90,7 @@ export async function catalog(page: Page) {
             id,
             product_id,
             storage_path,
-            alt,
+            alt: state.imageAlt ?? alt,
             position,
           })),
         });

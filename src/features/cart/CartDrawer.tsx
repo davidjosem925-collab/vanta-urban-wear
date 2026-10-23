@@ -1,3 +1,4 @@
+import { productTitle } from "../catalog/presentation";
 import { useEffect, useRef, useState } from "react";
 import {
   isDialogBackdrop,
@@ -7,7 +8,7 @@ import {
 import { Photo } from "../../components/Photo";
 import { formatARS, productHref } from "../catalog/model";
 import { useCart } from "./context";
-import { MAX_LINES, MAX_QUANTITY, type CartEntry } from "./model";
+import { MAX_QUANTITY, type CartEntry } from "./model";
 
 export function CartTrigger({ beforeOpen }: { beforeOpen(): void }) {
   const cart = useCart();
@@ -53,7 +54,7 @@ function CartItem({
 }) {
   const cart = useCart();
   const { line, product, variant, status } = entry;
-  const name = product?.name ?? "Prenda por verificar";
+  const name = product ? productTitle(product.name) : "Prenda por verificar";
   const ready = status === "ready" && product && variant;
   const verifying = status === "loading" && Boolean(product && variant);
   const image = product?.images[0];
@@ -98,7 +99,6 @@ function CartItem({
                 </>
               )}
             </p>
-            <p className="cart-stock">Stock por confirmar</p>
           </>
         ) : (
           <p className="cart-line-notice">
@@ -260,10 +260,7 @@ export function CartDrawer() {
                 Volver a verificar catálogo
               </button>
             )}
-            <p className="cart-limits muted small">
-              Límite de {MAX_QUANTITY} unidades por variante y {MAX_LINES}{" "}
-              variantes. Estos límites no representan stock disponible.
-            </p>
+
             {confirmClear ? (
               <div
                 className="cart-clear-confirm"
@@ -311,8 +308,7 @@ export function CartDrawer() {
           </strong>
         </div>
         <p id="cart-disclaimer" className="muted small">
-          Stock por confirmar. Los precios se consultan en el catálogo; no se
-          reserva inventario.
+          Agregar prendas al carrito no reserva unidades.
         </p>
         <button
           className="button primary"
@@ -326,11 +322,8 @@ export function CartDrawer() {
             window.location.hash = "/checkout";
           }}
         >
-          Continuar al checkout demo
+          Continuar al checkout
         </button>
-        <p className="cart-future muted small">
-          Checkout de demostración. Sin cobros ni pedidos comerciales.
-        </p>
       </footer>
     </dialog>
   );

@@ -73,8 +73,7 @@ export function AddToCart({
         </button>
       </div>
       <p id="cart-limit" className="muted small">
-        Hasta {MAX_QUANTITY} unidades por variante. Es un límite del carrito, no
-        una confirmación de stock.
+        Hasta {MAX_QUANTITY} unidades por combinación.
       </p>
       <div
         id="cart-add-feedback"

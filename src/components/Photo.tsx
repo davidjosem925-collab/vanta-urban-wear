@@ -1,3 +1,4 @@
+import { imageCaption } from "../features/catalog/presentation";
 import { useState } from "react";
 import type { CatalogImage, CatalogService } from "../features/catalog/service";
 import {
@@ -60,7 +61,7 @@ function PhotoContent({
           role="img"
           aria-label={
             image
-              ? `${image.alt}: imagen no disponible`
+              ? `${imageCaption(image.alt)}: imagen no disponible`
               : "Fotografía próximamente"
           }
         />
@@ -86,7 +87,7 @@ function PhotoContent({
     <span className={`photo-frame ${loaded ? "is-loaded" : "is-loading"}`}>
       <img
         src={url}
-        alt={image?.alt ?? ""}
+        alt={imageCaption(image?.alt ?? "")}
         width={dimensions.width}
         height={dimensions.height}
         loading={eager ? "eager" : "lazy"}

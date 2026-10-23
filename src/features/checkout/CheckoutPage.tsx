@@ -1,3 +1,4 @@
+import { PaymentNotice } from "./PaymentNotice";
 import {
   useEffect,
   useRef,
@@ -96,7 +97,7 @@ export function CheckoutPage({
         normalizeNotificationEmail(draft.email);
       } catch {
         next.email =
-          "Ingresá un correo válido para las notificaciones de prueba.";
+          "Ingresá un correo válido para recibir las notificaciones.";
       }
     }
     setErrors(next);
@@ -156,7 +157,7 @@ export function CheckoutPage({
   function chooseDelivery(value: "shipping" | "pickup") {
     setDeliveryMessage(
       value === "shipping" && draft.payment === "cash"
-        ? "Efectivo solo está disponible para retiro. Elegí otro método de pago simulado."
+        ? "Efectivo solo está disponible para retiro. Elegí otro método de pago."
         : "",
     );
     setDraft((d) => changeDelivery(d, value));
@@ -173,17 +174,21 @@ export function CheckoutPage({
         <span aria-hidden="true">/</span>
         <a href="#/catalogo">Colección</a>
         <span aria-hidden="true">/</span>
-        <span aria-current="page">Checkout demo</span>
+        <span aria-current="page">Finalizar compra</span>
       </nav>
       <p className="eyebrow">VANTA / TU SELECCIÓN</p>
       <h1 id="checkout-title">
-        {finished ? "Recorrido completado." : "Checkout de demostración"}
+        {finished
+          ? orderReceipt
+            ? "Pedido registrado."
+            : "Selección confirmada."
+          : "Finalizar compra"}
       </h1>
-      <p className="checkout-intro">
-        {orders.enabled
-          ? "Demostración sin cobros ni pedidos comerciales. Las reservas de stock de demo duran 60 minutos."
-          : "Una experiencia para explorar. Sin cobros, pedidos comerciales ni reservas de stock."}
-      </p>
+      {!finished && (
+        <p className="checkout-intro">
+          Revisá tus datos y tu selección antes de confirmar.
+        </p>
+      )}
       {paymentsEnabled && paymentSession && (
         <div className="checkout-notice">
           <p>
@@ -247,8 +252,8 @@ export function CheckoutPage({
           </span>
           <h2>
             {orderReceipt
-              ? "Pedido demo registrado."
-              : "Recorrido de compra completado."}
+              ? "Tu pedido fue registrado correctamente."
+              : "Tu selección está lista."}
           </h2>
           {orderReceipt && (
             <div role="status">
@@ -260,29 +265,25 @@ export function CheckoutPage({
               </p>
               <p>Subtotal: {formatARS(orderReceipt.subtotal_cents)} ARS</p>
               <p>
-                Reserva de demostración por 60 minutos desde la creación en el
-                servidor. Vence:{" "}
+                Reserva válida durante 60 minutos. Vence:{" "}
                 {new Date(orderReceipt.expires_at).toLocaleString("es-AR")}.
               </p>
-              <p>
-                {orderReceipt.email_requested
-                  ? "Se guardaron el detalle del pedido y tu correo cifrado para sus notificaciones."
-                  : "Solo los datos anonimizados de este pedido se guardaron."}{" "}
-                Las prendas registradas se retiraron del carrito.
-              </p>
+              <p>Las prendas registradas se retiraron del carrito.</p>
             </div>
           )}
-          <p>
-            {orderReceipt
-              ? "Este pedido de demostración quedó registrado. No es una operación comercial y no se realizó ningún cobro."
-              : "Esta es una demostración de VANTA Urban Wear. No se realizó ningún cobro ni se registró un pedido real."}
-          </p>
+          <aside className="checkout-notice" aria-label="Pedido de prueba">
+            <h3>Pedido de prueba</h3>
+            <p>
+              Esta operación pertenece a una tienda ficticia. No constituye una
+              compra real ni un comprobante de pago.
+            </p>
+          </aside>
           <p>
             {orderReceipt
               ? orderReceipt.email_requested
-                ? "Solicitamos el envío de las novedades por correo. La entrega puede demorar; no es una confirmación de pago ni un comprobante fiscal."
-                : "No se enviaron correos ni mensajes. No se realizó ningún cobro."
-              : "Tu selección sigue en el carrito. No se enviaron correos ni mensajes."}
+                ? "Solicitamos el envío de las novedades por correo. La entrega puede demorar."
+                : "No se enviaron correos ni mensajes."
+              : "Tu selección sigue en el carrito. No se registró un pedido ni se enviaron mensajes."}
           </p>
           <div className="checkout-actions">
             <a className="button primary" href="#/catalogo">
@@ -296,7 +297,7 @@ export function CheckoutPage({
       ) : cart.entries.length === 0 ? (
         <div className="checkout-empty">
           <h2>Tu selección está vacía.</h2>
-          <p>Agregá una prenda para recorrer el checkout de demostración.</p>
+          <p>Agregá una prenda para continuar al checkout.</p>
           <a className="button primary" href="#/catalogo">
             Explorar la colección
           </a>
@@ -315,25 +316,25 @@ export function CheckoutPage({
               )}
             </li>
             <li>
-              <span>03 · Finalización demo</span>
+              <span>03 · Confirmación</span>
             </li>
           </ol>
           <div className="checkout-demo-note">
             <p>
               {orders.notificationsEnabled
-                ? "Usá datos de contacto y entrega ficticios, excepto una dirección de correo real autorizada para esta prueba."
-                : "Usá datos ficticios."}{" "}
+                ? "Usá datos personales de ejemplo y un correo autorizado para recibir las notificaciones."
+                : "Usá datos personales de ejemplo."}{" "}
               Los datos del formulario se conservan solo en memoria durante esta
               visita y se pierden al recargar.{" "}
               {orders.notificationsEnabled
-                ? "Al confirmar, solo tu correo se enviará al servidor para las novedades del pedido. Se conservará cifrado hasta 30 días; no se enviarán tu nombre, teléfono ni domicilio. Solo se admiten destinatarios de prueba autorizados."
+                ? "Solo tu correo se enviará para las novedades del pedido y se conservará cifrado hasta 30 días. Tu nombre, teléfono y domicilio no se envían."
                 : orders.enabled &&
-                  "El servidor no recibe tus datos de contacto ni domicilio: guarda un comprador anonimizado, prendas, entrega y método simulado."}
+                  "Tu nombre, teléfono y domicilio no se envían."}
             </p>
           </div>
           {step === "complete" && !completed && valid && (
             <div className="checkout-notice" role="status">
-              <p>Revisá tu selección antes de finalizar la demostración.</p>
+              <p>Revisá tu selección antes de confirmar.</p>
               <a className="button secondary" href="#/checkout/revision">
                 Volver a la revisión
               </a>
@@ -342,7 +343,7 @@ export function CheckoutPage({
           {step !== "details" && !valid && (
             <div className="checkout-notice" role="status">
               <p>
-                Completá tus datos, entrega y método simulado antes de revisar o
+                Completá tus datos, entrega y método de pago antes de revisar o
                 finalizar.
               </p>
               <a className="button secondary" href="#/checkout">
@@ -425,8 +426,8 @@ export function CheckoutPage({
                           onChange={() => chooseDelivery("pickup")}
                         />
                         <span>
-                          Retiro en local ficticio
-                          <small>Demostración · Sin costo</small>
+                          Retiro en local
+                          <small>Sin costo</small>
                         </span>
                       </label>
                     </div>
@@ -523,9 +524,7 @@ export function CheckoutPage({
                       </>
                     ) : (
                       <p className="checkout-help">
-                        Retiro sin costo en un local ficticio, exclusivamente de
-                        demostración. No hay una dirección ni horarios
-                        comerciales reales.
+                        Retiro sin costo. No se requiere un domicilio de envío.
                       </p>
                     )}
                   </fieldset>
@@ -537,15 +536,9 @@ export function CheckoutPage({
                     }
                     aria-invalid={Boolean(errors.payment)}
                   >
-                    <legend>
-                      {paymentsEnabled
-                        ? "03 / Pago de prueba"
-                        : "03 / Pago simulado"}
-                    </legend>
+                    <legend>03 / Método de pago</legend>
                     <p className="checkout-help" id="payment-help">
-                      {paymentsEnabled
-                        ? "Mercado Pago abre su checkout de pruebas fuera de VANTA. Usá solo usuarios y tarjetas de prueba. La transferencia es ficticia: no transfieras dinero. VANTA no solicita tarjetas ni datos bancarios."
-                        : "Solo una selección visual. No se abrirán pasarelas, no se solicitarán datos financieros ni comprobantes."}
+                      Seleccioná cómo querés pagar.
                     </p>
                     <div className="checkout-choices">
                       {(paymentsEnabled
@@ -575,16 +568,16 @@ export function CheckoutPage({
                           />
                           <span>
                             {paymentsEnabled && method === "mercado_pago"
-                              ? "Mercado Pago — Pruebas"
+                              ? "Mercado Pago"
                               : paymentNames[method]}
                             <small>
                               {method === "cash"
-                                ? "Exclusivo para retiro en local ficticio"
+                                ? "Exclusivo para retiro en local"
                                 : paymentsEnabled && method === "mercado_pago"
-                                  ? "Checkout Pro · Solo entorno de pruebas"
+                                  ? "Pago en el sitio de Mercado Pago"
                                   : paymentsEnabled
                                     ? "Datos ficticios · No transfieras dinero"
-                                    : "Simulado · Sin cobro"}
+                                    : "Sin cobro real"}
                             </small>
                           </span>
                         </label>
@@ -621,7 +614,7 @@ export function CheckoutPage({
                   <section>
                     <h3>Entrega</h3>
                     {draft.delivery === "pickup" ? (
-                      <p>Retiro en local ficticio · Demostración · Sin costo</p>
+                      <p>Retiro en local · Sin costo</p>
                     ) : (
                       <>
                         <p>
@@ -639,15 +632,11 @@ export function CheckoutPage({
                     )}
                   </section>
                   <section>
-                    <h3>
-                      {paymentsEnabled
-                        ? "Método de pago de prueba"
-                        : "Método simulado"}
-                    </h3>
+                    <h3>Método de pago</h3>
                     <p>{paymentNames[draft.payment]}</p>
                     <p>
                       {paymentsEnabled && draft.payment === "mercado_pago"
-                        ? "Se abrirá Mercado Pago en modo de pruebas. No uses tarjetas ni dinero reales."
+                        ? "Continuarás en el sitio de Mercado Pago."
                         : "No se realizará ningún cobro."}
                     </p>
                   </section>
@@ -659,14 +648,12 @@ export function CheckoutPage({
           {step === "review" && orders.enabled && valid && (
             <div className="checkout-demo-note">
               <p>
-                Confirmar registra un pedido ficticio y reserva stock de
-                demostración durante 60 minutos. Máximo 12 unidades por pedido y
-                3 por variante. No hay cobros.
+                La disponibilidad se verifica al confirmar. La reserva tiene una
+                duración de 60 minutos.
               </p>
               <p>
-                Si una respuesta se pierde, reintentar consulta el mismo
-                intento, incluso si después modificaste el carrito. No repitas
-                desde otra pestaña.
+                Si se interrumpe la conexión, consultá el estado desde esta
+                misma pestaña antes de volver a intentar.
               </p>
               <OrderChallenge
                 key={challengeRevision}
@@ -680,10 +667,12 @@ export function CheckoutPage({
             !challenge &&
             !orderFlow.pending && (
               <p className="checkout-help" role="status">
-                Completá la verificación de seguridad para habilitar «Confirmar
-                pedido demo» o continuar al pago de prueba.
+                Completá la verificación de seguridad para continuar.
               </p>
             )}
+          {step === "review" &&
+            paymentsEnabled &&
+            draft.payment === "mercado_pago" && <PaymentNotice />}
           <div className="checkout-actions">
             {step === "details" ? (
               <button
@@ -692,7 +681,7 @@ export function CheckoutPage({
                 type="submit"
                 disabled={!ready}
               >
-                Revisar demostración
+                Revisar pedido
               </button>
             ) : step === "review" && valid ? (
               <button
@@ -734,10 +723,10 @@ export function CheckoutPage({
                     ? "Confirmando…"
                     : paymentsEnabled
                       ? draft.payment === "mercado_pago"
-                        ? "Ir a Mercado Pago de prueba"
-                        : "Crear pedido con transferencia demo"
-                      : "Confirmar pedido demo"
-                  : "Finalizar demostración"}
+                        ? "Ir a Mercado Pago"
+                        : "Confirmar pedido"
+                      : "Confirmar pedido"
+                  : "Confirmar selección"}
               </button>
             ) : null}
             <button className="button secondary" onClick={cart.openCart}>

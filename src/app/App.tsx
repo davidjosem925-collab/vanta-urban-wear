@@ -227,9 +227,9 @@ function AppShell({
     route.kind === "admin"
       ? "Administración"
       : route.kind === "payment"
-        ? "Pago de prueba"
+        ? "Pago"
         : route.kind === "checkout"
-          ? "Checkout demo"
+          ? "Finalizar compra"
           : route.kind === "product"
             ? "Producto"
             : route.kind === "category"
@@ -286,8 +286,7 @@ function AppShell({
         Saltar al contenido
       </a>
       <div className="announcement">
-        PROYECTO FICTICIO / PORTFOLIO <span aria-hidden="true">—</span> COMPRAS
-        PRÓXIMAMENTE
+        PROYECTO FICTICIO / PORTFOLIO — NO SE REALIZAN COMPRAS REALES
       </div>
       <header className="site-header">
         <div className="header-inner section-shell">
@@ -352,9 +351,9 @@ function AppShell({
       {payments.enabled && paymentFlow.session && route.kind !== "payment" && (
         <nav
           className="payment-access section-shell"
-          aria-label="Pedido de prueba en curso"
+          aria-label="Pedido en curso"
         >
-          <span>Tu pedido de prueba sigue disponible.</span>
+          <span>Tu pedido sigue disponible.</span>
           <a className="cart-text-button" href="#/checkout/pago">
             Consultar mi pago
           </a>
@@ -387,7 +386,7 @@ function AppShell({
           <Suspense
             fallback={
               <p className="section-shell" role="status">
-                Preparando checkout demo…
+                Preparando checkout…
               </p>
             }
           >
@@ -423,11 +422,7 @@ function AppShell({
               VANTA<span>®</span>
             </a>
             <p>Menos ruido. Más identidad.</p>
-            <p className="muted small">
-              Tienda ficticia de indumentaria urbana.
-              <br />
-              Proyecto de portfolio. No acepta compras.
-            </p>
+            <p className="muted small">Portfolio de diseño y desarrollo.</p>
           </div>
           <div>
             <h2>Explorá</h2>
@@ -463,13 +458,9 @@ function AppShell({
           <div>
             <h2>Buenos Aires, AR</h2>
             <p className="muted small">
-              Estudio VANTA · Dirección ficticia
+              Estudio VANTA
               <br />
-              Calle Imaginaria 000, Buenos Aires
-              <br />
-              hola@vanta.example
-              <br />
-              Datos ilustrativos, sin atención al público.
+              Sin local ni atención al público.
             </p>
           </div>
         </div>

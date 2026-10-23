@@ -56,7 +56,7 @@ test("responsive: selección, variantes, cantidades, persistencia y vaciado", as
   await qty.getByRole("button", { name: /^Disminuir/ }).click();
   await expect(dialog.getByText("3 unidades")).toBeVisible();
   await expect(
-    dialog.getByRole("button", { name: /Continuar al checkout demo/ }),
+    dialog.getByRole("button", { name: /Continuar al checkout/ }),
   ).toBeEnabled();
   expect(
     await page.locator("body").evaluate((body) => body.style.overflow),

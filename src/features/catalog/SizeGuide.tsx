@@ -98,8 +98,8 @@ export function SizeGuide({
             aria-label="Contenido de la guía de talles"
           >
             <p id={`${id}-notice`} className="size-guide-notice">
-              Medidas orientativas de prendas ficticias, en centímetros. No son
-              medidas oficiales verificadas ni una garantía de calce.
+              Medidas orientativas en centímetros. No son medidas oficiales
+              verificadas ni una garantía de calce.
             </p>
             {state.status === "loading" && (
               <p role="status">Consultando la categoría…</p>

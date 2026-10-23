@@ -300,7 +300,7 @@ it.each([
       order_status: "confirmed",
       checkout_url: null,
     },
-    "Pago de prueba aprobado.",
+    "Pago aprobado.",
   ],
   [
     {
@@ -313,16 +313,26 @@ it.each([
     "Pago en revisión.",
   ],
   [
+    {
+      ...view,
+      payment_status: "approved",
+      reconciliation: "settled",
+      order_status: "pending",
+      checkout_url: null,
+    },
+    "Pago pendiente.",
+  ],
+  [
     { ...view, order_status: "expired", checkout_url: null },
     "La reserva venció.",
   ],
   [
     { ...view, payment_status: "cancelled", checkout_url: null },
-    "Operación cancelada.",
+    "Pago cancelado.",
   ],
   [
     { ...view, payment_status: "rejected", checkout_url: null },
-    "Pago de prueba rechazado.",
+    "Pago rechazado.",
   ],
 ] as const)(
   "only server states decide terminal presentation: %s",
