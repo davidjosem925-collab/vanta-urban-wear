@@ -450,3 +450,67 @@ it("disabling creation still permits read-only orphan search, but never issues a
   );
   expect(await value("select reserved v from public.inventory")).toBe(2);
 });
+
+it("rejected create response can leave a real provider order unlinked; worker searches then GETs it without another POST/reservation", async () => {
+  providerState = {
+    checkout_url: "https://private.example/unsafe?token=private-value",
+    payer: { email: "private@example.test" },
+  };
+  const response = await handler("checkout")(checkout());
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({ error: "INVALID_PROVIDER_RESPONSE" });
+  expect(diagnostics.at(-1)).toEqual({
+    event: "mp_test_diagnostic",
+    operation: "checkout",
+    outcome: "INVALID_PROVIDER_RESPONSE",
+    http_status: 503,
+    dependency: "create",
+    validation: "checkout_url",
+  });
+  expect(await value("select mp_order_id v from public.payments")).toBeNull();
+  expect(writes).toHaveLength(1);
+  const key = writes[0].key;
+  expect(saved).not.toBeNull();
+  expect(
+    await value("select count(*)::int v from public.stock_reservations"),
+  ).toBe(1);
+  providerState = {};
+  await db.exec("reset role");
+  await due();
+  await db.exec("set role service_role");
+  const recovered = await handler("worker")(worker());
+  expect(await recovered.json()).toMatchObject({ processed: 1, retry: 0 });
+  expect(await value("select mp_order_id v from public.payments")).toBe(
+    resource,
+  );
+  expect(writes).toHaveLength(1);
+  expect(writes[0].key).toBe(key);
+  expect(await value("select reserved v from public.inventory")).toBe(2);
+  expect(await value("select on_hand v from public.inventory")).toBe(8);
+  expect(await value("select count(*)::int v from public.orders")).toBe(1);
+  expect(
+    await value("select count(*)::int v from public.stock_reservations"),
+  ).toBe(1);
+  expect(JSON.stringify(diagnostics)).not.toMatch(
+    /private|token=|APP_USR|capability/,
+  );
+});
+it("worker HTTP 200 is not proof of reconciliation: invalid GET is reported as retry with its validation", async () => {
+  await handler("checkout")(checkout());
+  providerState = { integration_data: null };
+  await db.exec("reset role");
+  await due();
+  await db.exec("set role service_role");
+  const response = await handler("worker")(worker());
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ processed: 0, retry: 1 });
+  expect(diagnostics.at(-1)).toMatchObject({
+    operation: "worker",
+    http_status: 200,
+    outcome: "INVALID_PROVIDER_RESPONSE",
+    dependency: "get",
+    validation: "application",
+  });
+  expect(await value("select status v from public.orders")).toBe("pending");
+  expect(await value("select on_hand v from public.inventory")).toBe(8);
+});

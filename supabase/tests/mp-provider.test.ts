@@ -292,3 +292,118 @@ it("matches official SDK 3.6.1 raw-field canonicalization; older lowercase manif
     verifySignature(request(resource.toLowerCase()), settings.webhookSecret),
   ).rejects.toMatchObject({ code: "INVALID_SIGNATURE" });
 });
+
+it("accepts the documented Checkout Pro create shape without trusting extra client/payer fields", () => {
+  const raw = remote({
+    user_id: "123",
+    integration_data: { application_id: "456", integrator_id: "ignored" },
+    total_paid_amount: "0.00",
+    capture_mode: "automatic_async",
+    expiration_time: "P1D",
+    client_token: "private-client-token",
+    payer: { email: "private@example.test" },
+    items: [
+      {
+        title: "Essential / S / Negro",
+        quantity: 2,
+        unit_price: "25000.50",
+        external_code: "ignored",
+      },
+    ],
+  });
+  const result = snapshot(raw, payment, settings, "create");
+  expect(result).toMatchObject({
+    id: resource,
+    url: raw.checkout_url,
+    value: { state: "pending", paid_cents: 0, amount_cents: 5000100 },
+  });
+  expect(JSON.stringify(result)).not.toMatch(
+    /client-token|private@example|payer|integrator/,
+  );
+});
+it("GET may omit checkout_url; it must still supply the financial/identity/item evidence", () => {
+  const result = snapshot(
+    remote({
+      checkout_url: undefined,
+      total_paid_amount: "50001.00",
+      status: "processed",
+      status_detail: "accredited",
+    }),
+    { ...payment, provider_order_id: resource },
+    settings,
+  );
+  expect(result.url).toBeNull();
+  expect(result.value.state).toBe("approved");
+});
+it.each([
+  [null, "response_object"],
+  [{ id: "ORD01J49MMW3SSBK5PSV3DFR32959" }, "order_id"],
+  [{ type: "point" }, "order_type"],
+  [{ processing_mode: "automatic" }, "processing_mode"],
+  [{ currency: "USD" }, "currency"],
+  [{ country_code: "BRA" }, "country"],
+  [{ external_reference: "private-reference" }, "reference"],
+  [{ user_id: "private-id" }, "seller"],
+  [{ integration_data: null }, "application"],
+  [{ total_amount: 50001 }, "total_amount"],
+  [{ total_amount: "0.01" }, "total_amount"],
+  [{ live_mode: true }, "live_mode"],
+  [{ total_paid_amount: undefined }, "paid_amount"],
+  [{ total_paid_amount: "50001.01" }, "paid_amount"],
+  [{ last_updated_date: "private-date" }, "updated_at"],
+  [{ items: undefined }, "items"],
+  [{ items: [null] }, "item_fields"],
+  [
+    {
+      items: [{ title: "private-title", quantity: 2, unit_price: "25000.50" }],
+    },
+    "item_match",
+  ],
+  [{ checkout_url: "https://private.example/" }, "checkout_url"],
+] as const)(
+  "identifies only the static failing validation (%j)",
+  (extra, validation) => {
+    try {
+      snapshot(
+        extra === null ? null : remote(extra),
+        payment,
+        settings,
+        "create",
+      );
+      expect.fail("expected rejection");
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: "INVALID_PROVIDER_RESPONSE",
+        http: 503,
+        dependency: "create",
+        validation,
+      });
+      expect(String(error)).not.toMatch(/private|50001/);
+    }
+  },
+);
+it.each([
+  `http://www.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}`,
+  `https://www.mercadopago.com.ar.evil.test/checkout/v1/redirect?order_id=${resource}`,
+  `https://attacker@www.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}`,
+  `https://www.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}&redirect=https://evil.test`,
+  `https://www.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}#extra`,
+  `https://www.mercadopago.com.ar/checkout/v1/redirect?order_id=ORDTSTAAAAAAAAAAAAAAAAAAAA`,
+  `https://sandbox.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}`,
+])(
+  "does not broaden the documented checkout URL allowlist (%s)",
+  (checkout_url) => {
+    expect(() => snapshot(remote({ checkout_url }), payment, settings)).toThrow(
+      expect.objectContaining({ validation: "checkout_url" }),
+    );
+  },
+);
+it("a GET cannot substitute a different resource for an already linked order", () => {
+  expect(() =>
+    snapshot(
+      remote(),
+      { ...payment, provider_order_id: "ORDTSTAAAAAAAAAAAAAAAAAAAA" },
+      settings,
+    ),
+  ).toThrow(expect.objectContaining({ validation: "bound_order_id" }));
+});

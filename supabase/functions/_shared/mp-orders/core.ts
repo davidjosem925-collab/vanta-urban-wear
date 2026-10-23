@@ -20,12 +20,36 @@ export type Dependency =
   | "search"
   | "cancel"
   | "rpc";
+/** Static field names only; never attach provider values to diagnostics. */
+export type Validation =
+  | "response_object"
+  | "order_id"
+  | "bound_order_id"
+  | "order_type"
+  | "processing_mode"
+  | "currency"
+  | "country"
+  | "reference"
+  | "seller"
+  | "application"
+  | "total_amount"
+  | "live_mode"
+  | "paid_amount"
+  | "updated_at"
+  | "items"
+  | "item_fields"
+  | "item_match"
+  | "checkout_url"
+  | "json_body"
+  | "search_results"
+  | "search_resource";
 export class PaymentError extends Error {
   constructor(
     readonly code: Code,
     readonly http = 503,
     readonly dependency?: Dependency,
     readonly upstreamStatus?: number,
+    readonly validation?: Validation,
   ) {
     super(code);
   }
@@ -233,6 +257,7 @@ export type Diagnostic = {
   http_status: number;
   dependency?: Dependency;
   upstream_status?: number;
+  validation?: Validation;
 };
 export type Sink = (entry: Diagnostic) => void;
 export type RpcName =

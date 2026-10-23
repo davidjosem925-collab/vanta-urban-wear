@@ -25,8 +25,12 @@ export function makePaymentHandler(
   sink: Sink = () => {},
 ) {
   const provider = new Provider(settings, fetcher);
-  async function apply(raw: unknown, c: Context) {
-    const s = snapshot(raw, c, settings);
+  async function apply(
+    raw: unknown,
+    c: Context,
+    dependency: "create" | "get" = "get",
+  ) {
+    const s = snapshot(raw, c, settings, dependency);
     return context(
       await rpc("mp_test_apply", {
         p_id: c.payment_id,
@@ -46,7 +50,7 @@ export function makePaymentHandler(
       (await rpc("mp_test_claim_create", { p_id: c.payment_id })) !== true
     )
       return c;
-    return apply(await provider.create(c), c);
+    return apply(await provider.create(c), c, "create");
   }
   async function reconcile(c: Context) {
     if (!c.provider_order_id) {
@@ -120,7 +124,8 @@ export function makePaymentHandler(
     let code: "ok" | PaymentError["code"] = "ok",
       status = 200;
     let dependency: import("./core.ts").Dependency | undefined,
-      upstream: number | undefined;
+      upstream: number | undefined,
+      validation: import("./core.ts").Validation | undefined;
     function failedDependency(error: unknown) {
       const failure =
         error instanceof PaymentError
@@ -129,6 +134,7 @@ export function makePaymentHandler(
       code = failure.code;
       dependency = failure.dependency;
       upstream = failure.upstreamStatus;
+      validation = failure.validation;
     }
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -301,6 +307,7 @@ export function makePaymentHandler(
       code = failure.code;
       dependency = failure.dependency;
       upstream = failure.upstreamStatus;
+      validation = failure.validation;
       return reply({ error: code }, failure.http);
     } finally {
       try {
@@ -310,6 +317,7 @@ export function makePaymentHandler(
           outcome: code,
           http_status: status,
           ...(dependency ? { dependency } : {}),
+          ...(validation ? { validation } : {}),
           ...(upstream && upstream >= 100 && upstream <= 599
             ? { upstream_status: upstream }
             : {}),
