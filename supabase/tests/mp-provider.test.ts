@@ -516,3 +516,78 @@ it.each([
     expect(result.value.paid_cents).toBe(cents(total_paid_amount));
   },
 );
+
+it.each(["expired", "accredited"])(
+  "terminal spelling alone cannot supply a missing amount (canceled/%s)",
+  (status_detail) => {
+    const raw: Record<string, unknown> = remote({
+      status: "canceled",
+      status_detail,
+    });
+    delete raw.total_paid_amount;
+    expect(() => snapshot(raw, payment, settings)).toThrow(
+      expect.objectContaining({
+        validation: "paid_amount",
+        validationDetail: "missing",
+      }),
+    );
+  },
+);
+it.each([null, 0, "invalid-private-amount", "50001.01"])(
+  "canceled/expired does not bypass the existing amount checks (%j)",
+  (total_paid_amount) => {
+    expect(() =>
+      snapshot(
+        remote({
+          status: "canceled",
+          status_detail: "expired",
+          total_paid_amount,
+        }),
+        payment,
+        settings,
+      ),
+    ).toThrow(PaymentError);
+  },
+);
+it("canceled/expired with explicit zero already maps to cancellation, never accreditation", () => {
+  const result = snapshot(
+    remote({
+      status: "canceled",
+      status_detail: "expired",
+      total_paid_amount: "0.00",
+    }),
+    payment,
+    settings,
+  );
+  expect(result.value).toMatchObject({
+    state: "cancelled",
+    detail: "cancelled",
+    paid_cents: 0,
+  });
+});
+it.each([
+  { id: "ORDPRODUCTION0000000000" },
+  { user_id: 999 },
+  { integration_data: { application_id: "999" } },
+  { currency: "USD" },
+  { external_reference: "foreign-reference" },
+  { total_amount: "0.01" },
+  { items: [{ title: "Foreign", quantity: 2, unit_price: "25000.50" }] },
+  { checkout_url: "https://attacker.example/" },
+])(
+  "a terminal order with an explicit amount still requires identity/products/URL evidence (%j)",
+  (extra) => {
+    expect(() =>
+      snapshot(
+        remote({
+          status: "canceled",
+          status_detail: "expired",
+          total_paid_amount: "0.00",
+          ...extra,
+        }),
+        payment,
+        settings,
+      ),
+    ).toThrow(PaymentError);
+  },
+);
