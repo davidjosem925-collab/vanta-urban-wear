@@ -62,7 +62,7 @@ describe("Tienda VANTA", () => {
     expect(
       await screen.findByRole("heading", { name: product.name }),
     ).toBeVisible();
-    expect(screen.getByText(/No acepta compras/)).toBeVisible();
+    expect(screen.getByText("PROYECTO FICTICIO / PORTFOLIO — NO SE REALIZAN COMPRAS REALES", { exact: true })).toBeVisible();
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /comprar|registr/i }),
@@ -107,15 +107,14 @@ describe("Tienda VANTA", () => {
     fireEvent.click(screen.getByRole("button", { name: "Negro" }));
     expect(screen.getByRole("button", { name: "L" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "M" }));
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Negro / M: variante publicada. Stock por confirmar.",
-    );
+    expect(screen.getByRole("button", { name: "M" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText(/Stock por confirmar|En stock/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Grafito" }));
     expect(screen.getByRole("button", { name: "M" })).toHaveAttribute(
       "aria-pressed",
       "false",
     );
-    expect(screen.getByText(/No hay un descuento publicado/)).toBeVisible();
+    expect(screen.queryByText(/descuento/i)).not.toBeInTheDocument();
     expect(screen.getByText(/25\.000,50/)).toBeVisible();
   });
   it("presenta los talles ordenados y conserva combinaciones de color claro", async () => {
@@ -135,8 +134,9 @@ describe("Tienda VANTA", () => {
     expect(within(sizes).getAllByRole("button", { pressed: false }).map((button) => button.textContent)).toEqual(["S", "M", "L", "XL"]);
     fireEvent.click(screen.getByRole("button", { name: "Blanco Hueso" }));
     fireEvent.click(within(sizes).getByRole("button", { name: "XL" }));
-    expect(screen.getByRole("status")).toHaveTextContent("Blanco Hueso / XL: variante publicada. Stock por confirmar.");
-    expect(screen.getByText(/No hay un descuento publicado/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "XL" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText(/Stock por confirmar|En stock/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/descuento/i)).not.toBeInTheDocument();
   });
   it("muestra errores con reintento y después un catálogo vacío", async () => {
     at("#/catalogo");

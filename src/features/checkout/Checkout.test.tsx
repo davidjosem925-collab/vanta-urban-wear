@@ -68,7 +68,7 @@ async function start() {
   await screen.findByLabelText("Nombre");
   await waitFor(() =>
     expect(
-      screen.getByRole("button", { name: "Revisar demostración" }),
+      screen.getByRole("button", { name: "Revisar pedido" }),
     ).toBeEnabled(),
   );
   return app;
@@ -84,16 +84,16 @@ function contact() {
 }
 function pickup() {
   fireEvent.click(
-    screen.getByRole("radio", { name: /Retiro en local ficticio/ }),
+    screen.getByRole("radio", { name: /Retiro en local/ }),
   );
-  fireEvent.click(screen.getByRole("radio", { name: /Efectivo — Demo/ }));
+  fireEvent.click(screen.getByRole("radio", { name: /Efectivo/ }));
 }
 async function review() {
-  fireEvent.click(screen.getByRole("button", { name: "Revisar demostración" }));
+  fireEvent.click(screen.getByRole("button", { name: "Revisar pedido" }));
   await screen.findByRole("heading", { name: "Todo en su lugar." });
   await waitFor(() =>
     expect(
-      screen.getByRole("button", { name: "Finalizar demostración" }),
+      screen.getByRole("button", { name: "Confirmar selección" }),
     ).toBeEnabled(),
   );
 }
@@ -132,9 +132,9 @@ describe("Checkout integrado con el carrito existente", () => {
     ).toBeVisible();
     expect(within(summary).getByText("Cantidad: 2")).not.toBeVisible();
     expect(
-      within(summary).getByText("Retiro ficticio · Sin costo"),
+      within(summary).getByText("Retiro en local · Sin costo"),
     ).toBeVisible();
-    expect(within(summary).getByText("Efectivo — Demo")).toBeVisible();
+    expect(within(summary).getByText("Efectivo")).toBeVisible();
     fireEvent.click(toggle);
     await waitFor(() => expect(toggle).toHaveTextContent("Ocultar productos"));
     expect(toggle).toHaveAttribute("aria-expanded", "true");
@@ -147,7 +147,7 @@ describe("Checkout integrado con el carrito existente", () => {
     ).toBeVisible();
     expect(screen.getByLabelText("Nombre")).toHaveValue("Lucía");
     expect(
-      screen.getByRole("radio", { name: /Efectivo — Demo/ }),
+      screen.getByRole("radio", { name: /Efectivo/ }),
     ).toBeChecked();
     fireEvent.click(
       within(summary).getByRole("button", { name: "Modificar carrito" }),
@@ -187,7 +187,7 @@ describe("Checkout integrado con el carrito existente", () => {
         }),
       ).toBeVisible();
       expect(
-        screen.queryByRole("button", { name: "Finalizar demostración" }),
+        screen.queryByRole("button", { name: "Confirmar selección" }),
       ).not.toBeInTheDocument();
       expect(
         screen.getByRole("link", { name: "Explorar la colección" }),
@@ -200,7 +200,7 @@ describe("Checkout integrado con el carrito existente", () => {
       target: { value: "Pérez" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "Revisar demostración" }),
+      screen.getByRole("button", { name: "Revisar pedido" }),
     );
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Revisá los campos",
@@ -222,12 +222,12 @@ describe("Checkout integrado con el carrito existente", () => {
     contact();
     expect(screen.getByLabelText("Provincia")).toBeVisible();
     expect(
-      screen.getByRole("radio", { name: /Efectivo — Demo/ }),
+      screen.getByRole("radio", { name: /Efectivo/ }),
     ).toBeDisabled();
     pickup();
     expect(screen.queryByLabelText("Provincia")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("radio", { name: /Efectivo — Demo/ }),
+      screen.getByRole("radio", { name: /Efectivo/ }),
     ).toBeChecked();
     const total = screen.getByRole("complementary", {
       name: "Resumen de la selección",
@@ -235,7 +235,7 @@ describe("Checkout integrado con el carrito existente", () => {
     expect(within(total).getByText("$ 50.001", { exact: true })).toBeVisible();
     fireEvent.click(screen.getByRole("radio", { name: /Envío a domicilio/ }));
     expect(
-      screen.getByRole("radio", { name: /Efectivo — Demo/ }),
+      screen.getByRole("radio", { name: /Efectivo/ }),
     ).not.toBeChecked();
     expect(screen.getByText(/Efectivo solo está disponible/)).toBeVisible();
     expect(screen.getByLabelText("Nombre")).toHaveValue("Lucía");
@@ -251,10 +251,10 @@ describe("Checkout integrado con el carrito existente", () => {
       expect(screen.getByLabelText("Nombre")).toHaveValue("Lucía"),
     );
     expect(
-      screen.getByRole("radio", { name: /Retiro en local ficticio/ }),
+      screen.getByRole("radio", { name: /Retiro en local/ }),
     ).toBeChecked();
     expect(
-      screen.getByRole("radio", { name: /Efectivo — Demo/ }),
+      screen.getByRole("radio", { name: /Efectivo/ }),
     ).toBeChecked();
     route("#/catalogo");
     await screen.findByRole("heading", { name: /Toda la colección/ });
@@ -265,7 +265,7 @@ describe("Checkout integrado con el carrito existente", () => {
     );
     await review();
     fireEvent.click(
-      screen.getByRole("button", { name: "Finalizar demostración" }),
+      screen.getByRole("button", { name: "Confirmar selección" }),
     );
     expect(
       await screen.findByRole("heading", {
@@ -335,7 +335,7 @@ describe("Checkout integrado con el carrito existente", () => {
     pickup();
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Revisar demostración" }),
+        screen.getByRole("button", { name: "Revisar pedido" }),
       ).toBeEnabled(),
     );
     await review();
@@ -354,7 +354,7 @@ describe("Checkout integrado con el carrito existente", () => {
       await screen.findByText(/No pudimos verificar toda la selección/),
     ).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "Finalizar demostración" }),
+      screen.getByRole("button", { name: "Confirmar selección" }),
     ).toBeDisabled();
     offline = false;
     fireEvent.click(
@@ -362,14 +362,14 @@ describe("Checkout integrado con el carrito existente", () => {
     );
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Finalizar demostración" }),
+        screen.getByRole("button", { name: "Confirmar selección" }),
       ).toBeEnabled(),
     );
     current = { ...current, variants: [] };
     act(() => window.dispatchEvent(new Event("focus")));
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Finalizar demostración" }),
+        screen.getByRole("button", { name: "Confirmar selección" }),
       ).toBeDisabled(),
     );
     expect(
@@ -434,14 +434,14 @@ it.each([true, false])(
     pickup();
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Revisar demostración" }),
+        screen.getByRole("button", { name: "Revisar pedido" }),
       ).toBeEnabled(),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Revisar demostración" }),
+      screen.getByRole("button", { name: "Revisar pedido" }),
     );
     const button = await screen.findByRole("button", {
-      name: "Confirmar pedido demo",
+      name: "Confirmar pedido",
     });
     expect(button).toBeDisabled();
     expect(confirm).not.toHaveBeenCalled();
@@ -474,7 +474,7 @@ it.each([true, false])(
         1,
       );
       expect(
-        screen.getByRole("button", { name: "Confirmar pedido demo" }),
+        screen.getByRole("button", { name: "Confirmar pedido" }),
       ).toBeDisabled();
     }
   },

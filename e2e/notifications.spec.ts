@@ -108,11 +108,9 @@ test("correo de comprador solo viaja al crear, nunca queda en storage ni se env�
     .getByRole("region", { name: "Producto agregado" })
     .getByRole("button", { name: "Ver carrito", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Continuar al checkout demo" })
-    .click();
+  await page.getByRole("button", { name: "Continuar al checkout" }).click();
   await expect(
-    page.getByText(/solo tu correo se enviará al servidor/),
+    page.getByText(/Solo tu correo se enviará para las novedades/),
   ).toBeVisible();
   for (const [name, value] of [
     ["Nombre", "Lucía"],
@@ -121,12 +119,10 @@ test("correo de comprador solo viaja al crear, nunca queda en storage ni se env�
     ["Teléfono de contacto", "1155551234"],
   ])
     await page.getByLabel(name, { exact: true }).fill(value);
-  await page.getByRole("radio", { name: /Retiro en local ficticio/ }).click();
+  await page.getByRole("radio", { name: /Retiro en local/ }).click();
   await page.getByRole("radio", { name: /Transferencia bancaria/ }).click();
-  await page.getByRole("button", { name: "Revisar demostración" }).click();
-  await page
-    .getByRole("button", { name: "Crear pedido con transferencia demo" })
-    .click();
+  await page.getByRole("button", { name: "Revisar pedido" }).click();
+  await page.getByRole("button", { name: "Confirmar pedido" }).click();
   await expect(
     page.getByRole("heading", { name: "Pago pendiente.", exact: true }),
   ).toBeVisible();

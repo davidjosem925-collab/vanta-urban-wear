@@ -80,7 +80,7 @@ describe("Carrito integrado", () => {
       within(panel).getByText("Todavía no agregaste prendas a tu carrito."),
     ).toBeVisible();
     expect(
-      within(panel).getByRole("button", { name: /Continuar al checkout demo/ }),
+      within(panel).getByRole("button", { name: /Continuar al checkout/ }),
     ).toBeDisabled();
     expect(
       within(panel).getByRole("link", { name: "Explorar la colección" }),
@@ -145,7 +145,8 @@ describe("Carrito integrado", () => {
     expect(within(panel).getByText("Subtotal")).toHaveTextContent(
       `${price(product.price_cents * 2)} ARS`,
     );
-    expect(within(panel).getByText("Stock por confirmar")).toBeVisible();
+    expect(within(panel).queryByText(/Stock por confirmar|En stock/i)).not.toBeInTheDocument();
+    expect(within(panel).getByText("Agregar prendas al carrito no reserva unidades.")).toBeVisible();
     expect(
       within(panel).getByText(price(product.price_cents * 2), { exact: true }),
     ).toBeVisible();

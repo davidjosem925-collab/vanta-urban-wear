@@ -14,15 +14,15 @@ async function begin(page: Page) {
     .getByRole("button", { name: "Ver carrito", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Continuar al checkout demo" })
+    .getByRole("button", { name: "Continuar al checkout" })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Checkout de demostración", level: 1 }),
+    page.getByRole("heading", { name: "Finalizar compra", level: 1 }),
   ).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.locator(".mobile-cart-bar")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Revisar demostración" }),
+    page.getByRole("button", { name: "Revisar pedido" }),
   ).toBeEnabled();
 }
 async function contact(page: Page) {
@@ -68,7 +68,7 @@ test("checkout vacío, recarga y acceso directo no simulan una finalización", a
       page.getByRole("heading", { name: "Tu selección está vacía." }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Finalizar demostración" }),
+      page.getByRole("button", { name: "Confirmar selección" }),
     ).toHaveCount(0);
     await noOverflow(page);
   }
@@ -79,9 +79,9 @@ test("checkout vacío, recarga y acceso directo no simulan una finalización", a
   await page.keyboard.press("Shift+Tab");
   await expect(page.getByLabel("Nombre", { exact: true })).toBeFocused();
   await contact(page);
-  await page.getByRole("radio", { name: /Retiro en local ficticio/ }).check();
-  await page.getByRole("radio", { name: /Efectivo — Demo/ }).check();
-  await page.getByRole("button", { name: "Revisar demostración" }).click();
+  await page.getByRole("radio", { name: /Retiro en local/ }).check();
+  await page.getByRole("radio", { name: /Efectivo/ }).check();
+  await page.getByRole("button", { name: "Revisar pedido" }).click();
   await expect(
     page.getByRole("heading", { name: "Todo en su lugar." }),
   ).toBeVisible();
@@ -90,7 +90,7 @@ test("checkout vacío, recarga y acceso directo no simulan una finalización", a
     page.getByText(/Completá tus datos, entrega y método/),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Finalizar demostración" }),
+    page.getByRole("button", { name: "Confirmar selección" }),
   ).toHaveCount(0);
   await page.goto("/#/checkout/finalizado");
   await expect(
@@ -111,7 +111,7 @@ test("checkout de retiro: validación accesible, edición, carrito compartido y 
 }, testInfo) => {
   const state = await catalog(page);
   await begin(page);
-  await page.getByRole("button", { name: "Revisar demostración" }).click();
+  await page.getByRole("button", { name: "Revisar pedido" }).click();
   await expect(page.getByRole("alert")).toContainText("Revisá los campos");
   await expect(page.getByLabel("Nombre", { exact: true })).toBeFocused();
   await expect(page.getByLabel("Nombre", { exact: true })).toHaveAttribute(
@@ -122,19 +122,19 @@ test("checkout de retiro: validación accesible, edición, carrito compartido y 
     page.getByLabel("Nombre", { exact: true }),
   ).toHaveAccessibleDescription(/Ingresá tu nombre/);
   await contact(page);
-  await page.getByRole("radio", { name: /Retiro en local ficticio/ }).check();
+  await page.getByRole("radio", { name: /Retiro en local/ }).check();
   await expect(page.getByLabel("Provincia", { exact: true })).toHaveCount(0);
-  await page.getByRole("radio", { name: /Efectivo — Demo/ }).check();
+  await page.getByRole("radio", { name: /Efectivo/ }).check();
   await noOverflow(page);
   await capture(page, testInfo.outputPath("checkout-pickup.png"));
-  await page.getByRole("button", { name: "Revisar demostración" }).click();
+  await page.getByRole("button", { name: "Revisar pedido" }).click();
   await expect(
     page.getByText("lucia@example.com", { exact: true }),
   ).toBeVisible();
   await page.getByRole("link", { name: "Editar información" }).click();
   await expect(page.getByLabel("Nombre", { exact: true })).toHaveValue("Lucía");
   await expect(
-    page.getByRole("radio", { name: /Efectivo — Demo/ }),
+    page.getByRole("radio", { name: /Efectivo/ }),
   ).toBeChecked();
   await page.getByRole("button", { name: "Volver al carrito" }).click();
   const dialog = page.getByRole("dialog", { name: "Tu carrito", exact: true });
@@ -146,7 +146,7 @@ test("checkout de retiro: validación accesible, edición, carrito compartido y 
   await expect(
     page.getByRole("complementary").getByText("Cantidad: 3"),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Revisar demostración" }).click();
+  await page.getByRole("button", { name: "Revisar pedido" }).click();
   await expect(page.locator(".checkout-total strong")).toHaveText(/75\.001,50/);
   if (page.viewportSize()!.width <= 767)
     await page.getByText("Ver productos", { exact: true }).click();
@@ -155,7 +155,7 @@ test("checkout de retiro: validación accesible, edición, carrito compartido y 
   ).toHaveAttribute("src", /vanta-thumb-v1\.webp/);
   await noOverflow(page);
   await capture(page, testInfo.outputPath("checkout-review.png"));
-  await page.getByRole("button", { name: "Finalizar demostración" }).click();
+  await page.getByRole("button", { name: "Confirmar selección" }).click();
   await expect(
     page.getByRole("heading", { name: "Recorrido de compra completado." }),
   ).toBeVisible();
@@ -184,14 +184,14 @@ test("checkout de envío: dirección, efectivo incompatible y revalidación de p
   const state = await catalog(page);
   await begin(page);
   await contact(page);
-  await page.getByRole("radio", { name: /Retiro en local ficticio/ }).check();
-  await page.getByRole("radio", { name: /Efectivo — Demo/ }).check();
+  await page.getByRole("radio", { name: /Retiro en local/ }).check();
+  await page.getByRole("radio", { name: /Efectivo/ }).check();
   await page.getByRole("radio", { name: /Envío a domicilio/ }).check();
   await expect(
-    page.getByRole("radio", { name: /Efectivo — Demo/ }),
+    page.getByRole("radio", { name: /Efectivo/ }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("radio", { name: /Efectivo — Demo/ }),
+    page.getByRole("radio", { name: /Efectivo/ }),
   ).not.toBeChecked();
   await expect(page.getByText(/Efectivo solo está disponible/)).toBeVisible();
   await page
@@ -210,12 +210,12 @@ test("checkout de envío: dirección, efectivo incompatible y revalidación de p
   ])
     await page.getByLabel(name, { exact: true }).fill(value);
   await page
-    .getByRole("radio", { name: /Transferencia bancaria — Demo/ })
+    .getByRole("radio", { name: /Transferencia bancaria/ })
     .check();
   await expect(page.getByText(/Efectivo solo está disponible/)).toHaveCount(0);
   await noOverflow(page);
   await capture(page, testInfo.outputPath("checkout-shipping.png"));
-  await page.getByRole("button", { name: "Revisar demostración" }).click();
+  await page.getByRole("button", { name: "Revisar pedido" }).click();
   await expect(
     page.getByText("Calle de prueba 123 · 2 B", { exact: true }),
   ).toBeVisible();
@@ -232,7 +232,7 @@ test("checkout de envío: dirección, efectivo incompatible y revalidación de p
   state.published = false;
   await page.evaluate(() => dispatchEvent(new Event("focus")));
   await expect(
-    page.getByRole("button", { name: "Finalizar demostración" }),
+    page.getByRole("button", { name: "Confirmar selección" }),
   ).toBeDisabled();
   await expect(
     page.getByText(/No pudimos verificar toda la selección/),
@@ -240,9 +240,9 @@ test("checkout de envío: dirección, efectivo incompatible y revalidación de p
   state.published = true;
   await page.getByRole("button", { name: "Reintentar verificación" }).click();
   await expect(
-    page.getByRole("button", { name: "Finalizar demostración" }),
+    page.getByRole("button", { name: "Confirmar selección" }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "Finalizar demostración" }).click();
+  await page.getByRole("button", { name: "Confirmar selección" }).click();
   await expect(
     page.getByRole("heading", { name: "Recorrido de compra completado." }),
   ).toBeVisible();
@@ -287,11 +287,11 @@ test("resumen responsive con ocho prendas: contraer, teclado y datos compartidos
   );
   await page.goto("/#/checkout");
   await expect(
-    page.getByRole("button", { name: "Revisar demostración" }),
+    page.getByRole("button", { name: "Revisar pedido" }),
   ).toBeEnabled();
   await contact(page);
-  await page.getByRole("radio", { name: /Retiro en local ficticio/ }).check();
-  await page.getByRole("radio", { name: /Efectivo — Demo/ }).check();
+  await page.getByRole("radio", { name: /Retiro en local/ }).check();
+  await page.getByRole("radio", { name: /Efectivo/ }).check();
   const summary = page.getByRole("complementary", {
     name: "Resumen de la selección",
   });
@@ -301,9 +301,9 @@ test("resumen responsive con ocho prendas: contraer, teclado y datos compartidos
   await expect(summary.locator(".checkout-total strong")).toHaveText(
     /400\.008/,
   );
-  await expect(summary.getByText("Retiro ficticio · Sin costo")).toBeVisible();
+  await expect(summary.getByText("Retiro en local · Sin costo")).toBeVisible();
   await expect(
-    summary.getByText("Efectivo — Demo", { exact: true }),
+    summary.getByText("Efectivo", { exact: true }),
   ).toBeVisible();
   await expect(
     summary.getByRole("button", { name: "Modificar carrito" }),
@@ -354,7 +354,7 @@ test("resumen responsive con ocho prendas: contraer, teclado y datos compartidos
   }
   await expect(page.getByLabel("Nombre", { exact: true })).toHaveValue("Lucía");
   await expect(
-    page.getByRole("radio", { name: /Efectivo — Demo/ }),
+    page.getByRole("radio", { name: /Efectivo/ }),
   ).toBeChecked();
   await summary.getByRole("button", { name: "Modificar carrito" }).click();
   const dialog = page.getByRole("dialog", { name: "Tu carrito", exact: true });
@@ -375,12 +375,12 @@ test("resumen responsive con ocho prendas: contraer, teclado y datos compartidos
       "Lucía",
     );
   }
-  await page.getByRole("button", { name: "Revisar demostración" }).click();
+  await page.getByRole("button", { name: "Revisar pedido" }).click();
   await expect(
     page.getByRole("heading", { name: "Todo en su lugar." }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Finalizar demostración" }),
+    page.getByRole("button", { name: "Confirmar selección" }),
   ).toBeEnabled();
   if (mobile)
     await expect(

@@ -1,3 +1,4 @@
+import { productTitle, productDescription } from "./presentation";
 import { useCallback, useState } from "react";
 import { Feedback, Loading } from "../../components/Feedback";
 import { Photo } from "../../components/Photo";
@@ -19,7 +20,6 @@ function ProductDetail({
   const [size, setSize] = useState("");
   const colors = [...new Set(product.variants.map((v) => v.color))];
   const sizes = orderedSizes(product.variants.map((v) => v.size));
-  const variant = selectedVariant(product.variants, color, size);
   function selectColor(value: string) {
     setColor(value);
     if (!selectedVariant(product.variants, value, size)) setSize("");
@@ -31,10 +31,13 @@ function ProductDetail({
         <span aria-hidden="true">/</span>
         <a href="#/catalogo">Colección</a>
         <span aria-hidden="true">/</span>
-        <span aria-current="page">{product.name}</span>
+        <span aria-current="page">{productTitle(product.name)}</span>
       </nav>
       <div className="product-detail">
-        <section className="gallery" aria-label={`Galería de ${product.name}`}>
+        <section
+          className="gallery"
+          aria-label={`Galería de ${productTitle(product.name)}`}
+        >
           <div className="gallery-main">
             <Photo
               key={product.images[activeImage]?.id ?? "empty"}
@@ -50,11 +53,16 @@ function ProductDetail({
                 <button
                   key={image.id}
                   className="gallery-thumb"
-                  aria-label={`Ver imagen ${index + 1} de ${product.name}`}
+                  aria-label={`Ver imagen ${index + 1} de ${productTitle(product.name)}`}
                   aria-pressed={index === activeImage}
                   onClick={() => setActiveImage(index)}
                 >
-                  <Photo key={image.id} image={image} service={service} profile="thumb" />
+                  <Photo
+                    key={image.id}
+                    image={image}
+                    service={service}
+                    profile="thumb"
+                  />
                 </button>
               ))}
             </div>
@@ -62,16 +70,13 @@ function ProductDetail({
         </section>
         <div className="detail-copy">
           <p className="eyebrow">VANTA / URBAN ESSENTIALS</p>
-          <h1>{product.name}</h1>
+          <h1>{productTitle(product.name)}</h1>
           <p className="detail-price">
             {formatARS(product.price_cents)} <small>ARS</small>
           </p>
-          <p className="transfer-note">
-            Precio por transferencia: a confirmar. No hay un descuento
-            publicado.
-          </p>
+
           <p className="product-description">
-            {product.description ||
+            {productDescription(product.description) ||
               "Una pieza del universo VANTA. Más información próximamente."}
           </p>
           {product.variants.length > 0 && (
@@ -124,20 +129,6 @@ function ProductDetail({
               </p>
             )}
           </fieldset>
-          <div className="availability" role="status">
-            <span className="status-dot" aria-hidden="true" />
-            <p>
-              {!product.variants.length
-                ? "Sin variantes publicadas por el momento."
-                : variant
-                  ? `${variant.color} / ${variant.size}: variante publicada. Stock por confirmar.`
-                  : "Elegí talle y color para consultar la combinación publicada."}
-            </p>
-          </div>
-          <p className="muted small">
-            La publicación de una variante no confirma unidades disponibles.
-            Esta tienda ficticia todavía no acepta compras.
-          </p>
           <AddToCart product={product} color={color} size={size} />
           <div className="detail-facts">
             <p>
@@ -147,7 +138,7 @@ function ProductDetail({
               <span>02</span> Diseñado para lo esencial.
             </p>
             <p>
-              <span>03</span> Envíos y retiro: próximamente.
+              <span>03</span> Líneas limpias, identidad propia.
             </p>
           </div>
         </div>

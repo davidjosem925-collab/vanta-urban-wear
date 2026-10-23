@@ -67,9 +67,7 @@ async function begin(
     .getByRole("region", { name: "Producto agregado" })
     .getByRole("button", { name: "Ver carrito", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Continuar al checkout demo" })
-    .click();
+  await page.getByRole("button", { name: "Continuar al checkout" }).click();
   for (const [name, value] of [
     ["Nombre", "Lucía"],
     ["Apellido", "Pérez"],
@@ -77,22 +75,39 @@ async function begin(
     ["Teléfono de contacto", "1155551234"],
   ])
     await page.getByLabel(name, { exact: true }).fill(value);
-  await page.getByRole("radio", { name: /Retiro en local ficticio/ }).click();
+  await page.getByRole("radio", { name: /Retiro en local/ }).click();
   if (method === "transfer")
     await page.getByRole("radio", { name: /Transferencia bancaria/ }).click();
   else
     await expect(
-      page.getByRole("radio", { name: /Mercado Pago — Pruebas/ }),
+      page.getByRole("radio", { name: /Mercado Pago/ }),
     ).toBeChecked();
   await expect(page.getByRole("radio", { name: /Efectivo/ })).toHaveCount(0);
-  await page.getByRole("button", { name: "Revisar demostración" }).click();
+  await page.getByRole("button", { name: "Revisar pedido" }).click();
   const confirm = page.getByRole("button", {
-    name:
-      method === "transfer"
-        ? "Crear pedido con transferencia demo"
-        : "Ir a Mercado Pago de prueba",
+    name: method === "transfer" ? "Confirmar pedido" : "Ir a Mercado Pago",
   });
   await expect(confirm).toBeEnabled();
+  const notice = page.getByRole("note", { name: "Compra de demostración" });
+  if (method === "mercado_pago") {
+    await expect(notice).toBeVisible();
+    await notice.screenshot({
+      path: test.info().outputPath("payment-notice.png"),
+    });
+    await expect(notice).toContainText(
+      "VANTA es un proyecto ficticio de portfolio. Estás por ingresar al entorno de pruebas de Mercado Pago. No se realizará ningún cobro real. Utilizá únicamente cuentas y tarjetas de prueba.",
+    );
+    expect(
+      await notice.evaluate(
+        (node) =>
+          !!(
+            node.compareDocumentPosition(
+              document.querySelector(".checkout-actions .button.primary")!,
+            ) & Node.DOCUMENT_POSITION_FOLLOWING
+          ),
+      ),
+    ).toBe(true);
+  } else await expect(notice).toHaveCount(0);
   return { state, orders, transfers, confirm };
 }
 async function overflow(page: Page) {
@@ -298,7 +313,7 @@ test("rechazo y cancelación provienen del servidor; rutas antiguas y navegació
     .click();
   await expect(
     page
-      .getByRole("navigation", { name: "Pedido de prueba en curso" })
+      .getByRole("navigation", { name: "Pedido en curso" })
       .getByRole("link", { name: "Consultar mi pago" }),
   ).toBeVisible();
   cancelled = true;

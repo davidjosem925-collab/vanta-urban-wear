@@ -1,3 +1,4 @@
+import { productTitle } from "../catalog/presentation";
 import { useEffect, useRef, useState } from "react";
 import { Photo } from "../../components/Photo";
 import { useAnyModalOpen } from "../../components/useAnyModalOpen";
@@ -91,7 +92,9 @@ export function CartFeedback({
               <p className="cart-toast-confirm">
                 <span aria-hidden="true">✓</span> Prenda agregada al carrito.
               </p>
-              <p className="cart-toast-name">{notice.product.name}</p>
+              <p className="cart-toast-name">
+                {productTitle(notice.product.name)}
+              </p>
               <p>
                 Talle {notice.variant.size} / {notice.variant.color} ·{" "}
                 {notice.quantity}{" "}

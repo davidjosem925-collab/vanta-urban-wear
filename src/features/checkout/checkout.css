@@ -461,3 +461,22 @@
   align-items: center;
   min-height: 44px;
 }
+
+.payment-portfolio-notice {
+  border: 1px solid #77736c;
+  padding: 18px 20px;
+  margin-block: 24px;
+  max-width: 760px;
+  color: #e5e2dc;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.payment-portfolio-notice h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 500;
+}
+.payment-portfolio-notice p {
+  margin: 0;
+  font-size: 13px;
+}

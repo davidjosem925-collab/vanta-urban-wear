@@ -34,11 +34,9 @@ async function begin(page: Page, manualChallenge = false) {
     .getByRole("region", { name: "Producto agregado" })
     .getByRole("button", { name: "Ver carrito", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Continuar al checkout demo" })
-    .click();
+  await page.getByRole("button", { name: "Continuar al checkout" }).click();
   await expect(
-    page.getByText(/Stock por confirmar. La disponibilidad y la reserva demo/),
+    page.getByText(/La disponibilidad se verifica al confirmar el pedido/),
   ).toBeVisible();
   for (const [name, value] of [
     ["Nombre", "Lucía"],
@@ -47,10 +45,10 @@ async function begin(page: Page, manualChallenge = false) {
     ["Teléfono de contacto", "1155551234"],
   ])
     await page.getByLabel(name, { exact: true }).fill(value);
-  await page.getByRole("radio", { name: /Retiro en local ficticio/ }).click();
-  await page.getByRole("radio", { name: /Efectivo — Demo/ }).click();
-  await page.getByRole("button", { name: "Revisar demostración" }).click();
-  const confirm = page.getByRole("button", { name: "Confirmar pedido demo" });
+  await page.getByRole("radio", { name: /Retiro en local/ }).click();
+  await page.getByRole("radio", { name: /Efectivo/ }).click();
+  await page.getByRole("button", { name: "Revisar pedido" }).click();
+  const confirm = page.getByRole("button", { name: "Confirmar pedido" });
   if (manualChallenge) await expect(confirm).toBeDisabled();
   else await expect(confirm).toBeEnabled();
   return state;
@@ -81,7 +79,7 @@ test("pedido auténticamente confirmado, carga, privacidad y vaciado solo tras r
     await gate;
     await route.fulfill({ json: result });
   });
-  await page.getByRole("button", { name: "Confirmar pedido demo" }).focus();
+  await page.getByRole("button", { name: "Confirmar pedido" }).focus();
   await page.keyboard.press("Enter");
   await expect(
     page.getByRole("button", { name: "Confirmando…" }),
@@ -131,7 +129,7 @@ test("error de red y reintento reutilizan la misma clave y no inventan confirmac
     if (bodies.length === 1) return route.abort();
     return route.fulfill({ json: result });
   });
-  await page.getByRole("button", { name: "Confirmar pedido demo" }).click();
+  await page.getByRole("button", { name: "Confirmar pedido" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "carrito permanece intacto",
   );
@@ -141,7 +139,7 @@ test("error de red y reintento reutilizan la misma clave y no inventan confirmac
       await page.evaluate(() => localStorage.getItem("vanta.cart.v1") ?? "{}"),
     ).lines,
   ).toHaveLength(1);
-  await page.getByRole("button", { name: "Confirmar pedido demo" }).click();
+  await page.getByRole("button", { name: "Confirmar pedido" }).click();
   await expect(
     page.getByRole("heading", { name: "Pedido demo registrado." }),
   ).toBeVisible();
@@ -159,12 +157,12 @@ test("stock y precio rechazados conservan selección y permiten revisar el carri
       json: { error: ++calls === 1 ? "INSUFFICIENT_STOCK" : "PRICE_CHANGED" },
     }),
   );
-  await page.getByRole("button", { name: "Confirmar pedido demo" }).click();
+  await page.getByRole("button", { name: "Confirmar pedido" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "No hay unidades suficientes",
   );
   await noOverflow(page);
-  await page.getByRole("button", { name: "Confirmar pedido demo" }).click();
+  await page.getByRole("button", { name: "Confirmar pedido" }).click();
   await expect(page.getByRole("alert")).toContainText("Cambió un precio");
   await page
     .getByRole("alert")
@@ -186,11 +184,11 @@ test("navegar durante la confirmación preserva unidades nuevas; respuesta invá
     await gate;
     return route.fulfill({ json: result });
   });
-  await page.getByRole("button", { name: "Confirmar pedido demo" }).click();
+  await page.getByRole("button", { name: "Confirmar pedido" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "carrito permanece intacto",
   );
-  await page.getByRole("button", { name: "Confirmar pedido demo" }).click();
+  await page.getByRole("button", { name: "Confirmar pedido" }).click();
   await expect(
     page.getByRole("button", { name: "Confirmando…" }),
   ).toBeDisabled();
@@ -231,7 +229,7 @@ test("recuperación tras recargar con carrito vacío no exige repetir formulario
     if (bodies.length === 1) return route.abort();
     return route.fulfill({ json: result });
   });
-  await page.getByRole("button", { name: "Confirmar pedido demo" }).click();
+  await page.getByRole("button", { name: "Confirmar pedido" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "carrito permanece intacto",
   );
@@ -278,11 +276,11 @@ test("recuperación inexistente y token consumido retoman la misma selección si
       });
     return route.fulfill({ json: result });
   });
-  const confirm = page.getByRole("button", { name: "Confirmar pedido demo" });
+  const confirm = page.getByRole("button", { name: "Confirmar pedido" });
   await page.getByRole("button", { name: "Verificar prueba" }).click();
   await expect(confirm).toBeEnabled();
   await page.getByRole("link", { name: "Editar información" }).click();
-  await page.getByRole("button", { name: "Revisar demostración" }).click();
+  await page.getByRole("button", { name: "Revisar pedido" }).click();
   await expect(confirm).toBeDisabled();
   await page.getByRole("button", { name: "Verificar prueba" }).click();
   await confirm.click();

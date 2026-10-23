@@ -1,3 +1,4 @@
+import { PaymentNotice } from "../checkout/PaymentNotice";
 import { useEffect, useRef } from "react";
 import { formatARS } from "../catalog/model";
 import type { usePayment } from "./usePayment";
@@ -38,9 +39,9 @@ export function PaymentPage({
         <span aria-hidden="true">/</span>
         <a href="#/catalogo">Colección</a>
         <span aria-hidden="true">/</span>
-        <span aria-current="page">Pago de prueba</span>
+        <span aria-current="page">Pago</span>
       </nav>
-      <p className="eyebrow">VANTA / DEMOSTRACIÓN</p>
+      <p className="eyebrow">VANTA / TU PEDIDO</p>
       <h1 id="payment-title">
         {pending ? "Consultando con el servidor…" : paymentHeading(view)}
       </h1>
@@ -48,7 +49,7 @@ export function PaymentPage({
         Entorno de pruebas. No uses dinero real ni datos de tarjetas reales.{" "}
         {notificationsEnabled
           ? "Las novedades de los pedidos registrados con correo se envían según el estado verificado del servidor. No son comprobantes fiscales."
-          : "No se envían correos en esta fase."}
+          : "No se enviarán notificaciones por correo."}
       </p>
       {!flow.enabled && (
         <p className="checkout-notice">
@@ -69,16 +70,12 @@ export function PaymentPage({
             sola. No repitas la compra para comprobar el resultado.
           </p>
           <a className="button secondary" href="#/checkout">
-            Consultar intento original
+            Volver al pedido
           </a>
         </div>
       ) : (
         <div className="checkout-finished payment-receipt">
-          <h2>
-            {transfer
-              ? "Transferencia bancaria de demostración"
-              : "Mercado Pago · Checkout Pro de prueba"}
-          </h2>
+          <h2>{transfer ? "Transferencia bancaria" : "Mercado Pago"}</h2>
           <p>
             Referencia: <strong>{session.reference}</strong>
           </p>
@@ -170,7 +167,7 @@ export function PaymentPage({
                   <strong>No transfieras dinero.</strong> No hay CBU, CVU ni
                   cuenta real. La selección no acredita un pago; solo una
                   operación administrativa autorizada podrá gestionar su
-                  evolución en una fase posterior.
+                  evolución.
                 </p>
               </div>
             )}
@@ -180,6 +177,9 @@ export function PaymentPage({
               registrada. Podés iniciar el pago sobre el mismo pedido sin
               duplicar la reserva.
             </p>
+          )}
+          {!transfer && flow.enabled && (canContinue || flow.absent) && (
+            <PaymentNotice />
           )}
           <div className="checkout-actions">
             <button
@@ -195,9 +195,7 @@ export function PaymentPage({
                 disabled={pending || !flow.enabled}
                 onClick={() => void flow.resume()}
               >
-                {flow.absent
-                  ? "Iniciar pago de prueba"
-                  : "Continuar en Mercado Pago"}
+                {flow.absent ? "Iniciar pago" : "Continuar en Mercado Pago"}
               </button>
             )}
             {view &&

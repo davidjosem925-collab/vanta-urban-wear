@@ -1,3 +1,4 @@
+import { productTitle } from "./presentation";
 import { ArrowIcon } from "../../components/ArrowIcon";
 import { useCallback, useState } from "react";
 import { Photo } from "../../components/Photo";
@@ -124,7 +125,7 @@ export function CatalogPage({
                     <a
                       className="product-photo"
                       href={productHref(product.slug)}
-                      aria-label={`Ver ${product.name}`}
+                      aria-label={`Ver ${productTitle(product.name)}`}
                     >
                       <Photo
                         profile="card"
@@ -139,17 +140,14 @@ export function CatalogPage({
                     <div className="product-info">
                       <p className="eyebrow">VANTA / ESSENTIALS</p>
                       <h2>
-                        <a href={productHref(product.slug)}>{product.name}</a>
+                        <a href={productHref(product.slug)}>
+                          {productTitle(product.name)}
+                        </a>
                       </h2>
                       <div className="price-row">
                         <span>{formatARS(product.price_cents)}</span>
                         <small>ARS</small>
                       </div>
-                      <p className="product-note">
-                        {product.variants.length
-                          ? "Variantes publicadas · Stock por confirmar"
-                          : "Sin variantes publicadas"}
-                      </p>
                     </div>
                   </article>
                 ))}
