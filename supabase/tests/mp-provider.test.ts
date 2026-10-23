@@ -456,3 +456,63 @@ it.each(["0", "0.00", "0.01", "50001.00"])(
     expect(result.value.state).toBe("pending");
   },
 );
+
+it.each([
+  ["created", "created"],
+  ["processing", "in_process"],
+  ["processing", "pending_review_manual"],
+  ["pending", "pending"], // Local/legacy wording is not an Orders API exception.
+  ["action_required", "waiting_capture"],
+  ["processed", "accredited"],
+  ["processed", "partially_refunded"],
+  ["refunded", "refunded"],
+] as const)(
+  "missing paid amount is unknown, never inferred from provider status %s/%s",
+  (status, status_detail) => {
+    const raw: Record<string, unknown> = remote({ status, status_detail });
+    delete raw.total_paid_amount;
+    expect(() => snapshot(raw, payment, settings, "get")).toThrow(
+      expect.objectContaining({
+        code: "INVALID_PROVIDER_RESPONSE",
+        validation: "paid_amount",
+        validationDetail: "missing",
+      }),
+    );
+  },
+);
+it.each([null, 0, "1e3", "50001.01"])(
+  "an accredited label cannot authorize an invalid paid amount (%j)",
+  (total_paid_amount) => {
+    expect(() =>
+      snapshot(
+        remote({
+          status: "processed",
+          status_detail: "accredited",
+          total_paid_amount,
+        }),
+        payment,
+        settings,
+      ),
+    ).toThrow(PaymentError);
+  },
+);
+it.each([
+  ["0.00", "review"],
+  ["50000.99", "review"],
+  ["50001.00", "approved"],
+] as const)(
+  "accreditation requires explicit exact paid total %s (%s)",
+  (total_paid_amount, state) => {
+    const result = snapshot(
+      remote({
+        status: "processed",
+        status_detail: "accredited",
+        total_paid_amount,
+      }),
+      payment,
+      settings,
+    );
+    expect(result.value.state).toBe(state);
+    expect(result.value.paid_cents).toBe(cents(total_paid_amount));
+  },
+);

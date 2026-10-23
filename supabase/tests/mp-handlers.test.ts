@@ -564,3 +564,42 @@ it.each([
     expect(JSON.stringify(diagnostics)).not.toContain(writes[0].key!);
   },
 );
+
+it.each([
+  ["created", "created"],
+  ["processing", "in_process"],
+  ["processed", "accredited"],
+] as const)(
+  "missing GET amount in %s/%s never binds or settles an unlinked order by assuming zero",
+  async (status, status_detail) => {
+    providerState = { status, status_detail, total_paid_amount: undefined };
+    const first = await handler("checkout")(checkout());
+    expect(first.status).toBe(503);
+    await db.exec("reset role");
+    await due();
+    await db.exec("set role service_role");
+    const response = await handler("worker")(worker());
+    expect(await response.json()).toMatchObject({ processed: 0, retry: 1 });
+    expect(diagnostics.at(-1)).toMatchObject({
+      dependency: "get",
+      validation: "paid_amount",
+      validation_detail: "missing",
+    });
+    expect(await value("select mp_order_id v from public.payments")).toBeNull();
+    expect(await value("select status v from public.orders")).toBe("pending");
+    expect(await value("select mp_reconciliation v from public.payments")).toBe(
+      "unlinked",
+    );
+    expect(await value("select reserved v from public.inventory")).toBe(2);
+    expect(await value("select on_hand v from public.inventory")).toBe(8);
+    expect(
+      await value("select count(*)::int v from public.stock_reservations"),
+    ).toBe(1);
+    expect(
+      await value(
+        "select count(*)::int v from public.inventory_movements where kind='consume'",
+      ),
+    ).toBe(0);
+    expect(writes).toHaveLength(1);
+  },
+);
