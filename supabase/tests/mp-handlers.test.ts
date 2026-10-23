@@ -514,3 +514,53 @@ it("worker HTTP 200 is not proof of reconciliation: invalid GET is reported as r
   expect(await value("select status v from public.orders")).toBe("pending");
   expect(await value("select on_hand v from public.inventory")).toBe(8);
 });
+
+it.each([
+  [undefined, "missing"],
+  [null, "null"],
+  [0, "number"],
+  ["private-paid-value", "invalid_text"],
+  [{ private: "paid-value" }, "unsupported_type"],
+  ["50001.01", "exceeds_order"],
+] as const)(
+  "unlinked GET failure reports only paid-amount category (%j), never links/settles or duplicates a reservation",
+  async (total_paid_amount, validation_detail) => {
+    providerState = { total_paid_amount };
+    const first = await handler("checkout")(checkout());
+    expect(first.status).toBe(503);
+    expect(await first.json()).toEqual({ error: "INVALID_PROVIDER_RESPONSE" });
+    expect(await value("select mp_order_id v from public.payments")).toBeNull();
+    expect(saved).not.toBeNull();
+    await db.exec("reset role");
+    await due();
+    await db.exec("set role service_role");
+    const response = await handler("worker")(worker());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ processed: 0, retry: 1 });
+    expect(diagnostics.at(-1)).toEqual({
+      event: "mp_test_diagnostic",
+      operation: "worker",
+      outcome: "INVALID_PROVIDER_RESPONSE",
+      dependency: "get",
+      validation: "paid_amount",
+      validation_detail,
+      http_status: 200,
+    });
+    expect(await value("select mp_order_id v from public.payments")).toBeNull();
+    expect(await value("select mp_reconciliation v from public.payments")).toBe(
+      "unlinked",
+    );
+    expect(await value("select status v from public.orders")).toBe("pending");
+    expect(await value("select reserved v from public.inventory")).toBe(2);
+    expect(await value("select on_hand v from public.inventory")).toBe(8);
+    expect(
+      await value("select count(*)::int v from public.stock_reservations"),
+    ).toBe(1);
+    expect(writes).toHaveLength(1);
+    expect(JSON.stringify(diagnostics)).not.toMatch(
+      /private|paid-value|APP_USR|capability/,
+    );
+    expect(JSON.stringify(diagnostics)).not.toContain(reference);
+    expect(JSON.stringify(diagnostics)).not.toContain(writes[0].key!);
+  },
+);

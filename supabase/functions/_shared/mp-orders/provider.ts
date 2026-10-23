@@ -9,6 +9,7 @@ import {
   type Settings,
   type Dependency,
   type Validation,
+  type PaidAmountDetail,
 } from "./core.ts";
 import { jsonBody } from "./core.ts";
 export type Snapshot = {
@@ -42,7 +43,11 @@ export function snapshot(
   dependency: Dependency = "get",
 ) {
   // Name the first failing boundary without retaining any response values.
-  function field<T>(validation: Validation, read: () => T): T {
+  function field<T>(
+    validation: Validation,
+    read: () => T,
+    detail?: PaidAmountDetail,
+  ): T {
     try {
       return read();
     } catch {
@@ -52,6 +57,7 @@ export function snapshot(
         dependency,
         undefined,
         validation,
+        detail,
       );
     }
   }
@@ -89,8 +95,28 @@ export function snapshot(
     field("total_amount", () => cents(v.total_amount)) === c.amount_cents,
   );
   requireField("live_mode", v.live_mode !== true);
-  const paid = field("paid_amount", () => cents(v.total_paid_amount));
-  requireField("paid_amount", paid <= c.amount_cents);
+  const paidValue = v.total_paid_amount;
+  // Classification adds metadata only: cents() remains the sole parser.
+  const paidDetail: PaidAmountDetail =
+    paidValue === undefined
+      ? "missing"
+      : paidValue === null
+        ? "null"
+        : typeof paidValue === "number"
+          ? "number"
+          : typeof paidValue === "string"
+            ? "invalid_text"
+            : "unsupported_type";
+  const paid = field("paid_amount", () => cents(paidValue), paidDetail);
+  if (paid > c.amount_cents)
+    throw new PaymentError(
+      "INVALID_PROVIDER_RESPONSE",
+      503,
+      dependency,
+      undefined,
+      "paid_amount",
+      "exceeds_order",
+    );
   requireField(
     "updated_at",
     typeof v.last_updated_date === "string" &&

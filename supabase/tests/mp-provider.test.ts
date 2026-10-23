@@ -407,3 +407,52 @@ it("a GET cannot substitute a different resource for an already linked order", (
     ),
   ).toThrow(expect.objectContaining({ validation: "bound_order_id" }));
 });
+
+it.each([
+  [undefined, "missing"],
+  [null, "null"],
+  [0, "number"],
+  [50001, "number"],
+  ["", "invalid_text"],
+  ["private-amount-sentinel", "invalid_text"],
+  ["1e3", "invalid_text"],
+  ["1,00", "invalid_text"],
+  ["0.001", "invalid_text"],
+  ["2000000000.01", "invalid_text"],
+  [true, "unsupported_type"],
+  [{ private: "amount-sentinel" }, "unsupported_type"],
+  [[], "unsupported_type"],
+  ["50001.01", "exceeds_order"],
+] as const)(
+  "rejects paid amount without coercion and classifies only its category (%j)",
+  (total_paid_amount, validationDetail) => {
+    expect(() =>
+      snapshot(remote({ total_paid_amount }), payment, settings),
+    ).toThrow(
+      expect.objectContaining({
+        code: "INVALID_PROVIDER_RESPONSE",
+        dependency: "get",
+        validation: "paid_amount",
+        validationDetail,
+      }),
+    );
+  },
+);
+it("a genuinely omitted total_paid_amount is rejected rather than defaulted to zero", () => {
+  const raw: Record<string, unknown> = remote();
+  delete raw.total_paid_amount;
+  expect(() => snapshot(raw, payment, settings)).toThrow(
+    expect.objectContaining({
+      validation: "paid_amount",
+      validationDetail: "missing",
+    }),
+  );
+});
+it.each(["0", "0.00", "0.01", "50001.00"])(
+  "still accepts explicit valid paid-amount text %s using exact cents",
+  (total_paid_amount) => {
+    const result = snapshot(remote({ total_paid_amount }), payment, settings);
+    expect(result.value.paid_cents).toBe(cents(total_paid_amount));
+    expect(result.value.state).toBe("pending");
+  },
+);
