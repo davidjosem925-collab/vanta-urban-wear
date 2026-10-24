@@ -35,6 +35,7 @@ export type Validation =
   | "total_amount"
   | "live_mode"
   | "paid_amount"
+  | "payment_evidence"
   | "updated_at"
   | "items"
   | "item_fields"

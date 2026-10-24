@@ -167,6 +167,7 @@ try {
     "202610230002_checkout_payments.sql",
     "202610230003_transactional_email.sql",
     "202610230004_admin_payments.sql",
+    "202610240001_mp_payment_evidence.sql",
   ])
     await sql(readFileSync(`supabase/migrations/${name}`, "utf8"));
   await sql(`update public.mp_test_config set enabled=true,seller_id='123',application_id='456';
@@ -350,6 +351,119 @@ try {
     "f",
   );
   await reset();
+  o = await order();
+  let evidencePayment = JSON.parse(await prepare(o));
+  const unknownEvidence = {
+    paid_cents: null,
+    paid_evidence: "unreported",
+    provider_state: "created",
+    provider_detail: "created",
+    state: "pending",
+    detail: "pending",
+  };
+  await Promise.all([
+    sql(apply(evidencePayment, unknownEvidence)),
+    sql(apply(evidencePayment, unknownEvidence)),
+  ]);
+  assert.equal(
+    await sql(
+      "select mp_paid_evidence||':'||(mp_paid_amount_cents is null)::text from public.payments",
+    ),
+    "unreported:true",
+  );
+  assert.equal(
+    await sql("select on_hand||':'||reserved from public.inventory"),
+    "8:2",
+  );
+  console.log(
+    "PASS native concurrent unknown creation links once without inventing paid money",
+  );
+  const races = await Promise.allSettled([
+    sql(apply(evidencePayment, unknownEvidence)),
+    sql(apply(evidencePayment)),
+  ]);
+  assert.equal(races[1].status, "fulfilled");
+  assert.equal(
+    await sql(
+      "select status||':'||mp_paid_evidence||':'||mp_paid_amount_cents from public.payments",
+    ),
+    "approved:reported:5000100",
+  );
+  assert.equal(
+    await sql(
+      "select count(*) from public.inventory_movements where kind='consume'",
+    ),
+    "1",
+  );
+  console.log(
+    "PASS native approval racing unknown observation cannot downgrade proof or double-consume",
+  );
+  await reset();
+  o = await order();
+  evidencePayment = JSON.parse(await prepare(o));
+  const terminalEvidence = {
+    ...unknownEvidence,
+    provider_state: "canceled",
+    provider_detail: "expired",
+    state: "cancelled",
+    detail: "cancelled",
+  };
+  await Promise.all([
+    sql(apply(evidencePayment, terminalEvidence)),
+    sql(apply(evidencePayment, terminalEvidence)),
+    sql("select public.demo_expire_orders()"),
+  ]);
+  assert.equal(
+    await sql("select on_hand||':'||reserved from public.inventory"),
+    "8:0",
+  );
+  assert.equal(
+    await sql(
+      "select count(*) from public.inventory_movements where kind='release'",
+    ),
+    "1",
+  );
+  console.log(
+    "PASS native duplicate unknown expiry and cron release once without consuming inventory",
+  );
+  await reset();
+  o = await order();
+  evidencePayment = JSON.parse(await prepare(o));
+  const terminalRace = await Promise.allSettled([
+    sql(apply(evidencePayment, terminalEvidence)),
+    sql(apply(evidencePayment)),
+  ]);
+  assert.equal(terminalRace[1].status, "fulfilled");
+  const raceOrder = await sql("select status from public.orders");
+  assert.equal(
+    await sql("select on_hand||':'||reserved from public.inventory"),
+    raceOrder === "confirmed" ? "6:0" : "8:0",
+  );
+  assert.equal(
+    await sql(
+      "select count(*) from public.inventory_movements where kind in ('consume','release')",
+    ),
+    "1",
+  );
+  console.log(
+    "PASS native cancellation/approval race preserves the single terminal stock outcome",
+  );
+  await assert.rejects(
+    sql(
+      readFileSync(
+        "supabase/operations/mp-payment-evidence-rollback.sql",
+        "utf8",
+      ),
+    ),
+    /PAYMENT_EVIDENCE_ACTIVITY_PRESENT/,
+  );
+  await reset();
+  await sql(
+    readFileSync(
+      "supabase/operations/mp-payment-evidence-rollback.sql",
+      "utf8",
+    ),
+  );
   await sql(
     readFileSync("supabase/operations/stage-8-admin-rollback.sql", "utf8"),
   );

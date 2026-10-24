@@ -348,7 +348,14 @@ it.each([
   [{ total_amount: 50001 }, "total_amount"],
   [{ total_amount: "0.01" }, "total_amount"],
   [{ live_mode: true }, "live_mode"],
-  [{ total_paid_amount: undefined }, "paid_amount"],
+  [
+    {
+      status: "processed",
+      status_detail: "accredited",
+      total_paid_amount: undefined,
+    },
+    "paid_amount",
+  ],
   [{ total_paid_amount: "50001.01" }, "paid_amount"],
   [{ last_updated_date: "private-date" }, "updated_at"],
   [{ items: undefined }, "items"],
@@ -427,7 +434,15 @@ it.each([
   "rejects paid amount without coercion and classifies only its category (%j)",
   (total_paid_amount, validationDetail) => {
     expect(() =>
-      snapshot(remote({ total_paid_amount }), payment, settings),
+      snapshot(
+        remote({
+          status: "processed",
+          status_detail: "accredited",
+          total_paid_amount,
+        }),
+        payment,
+        settings,
+      ),
     ).toThrow(
       expect.objectContaining({
         code: "INVALID_PROVIDER_RESPONSE",
@@ -438,8 +453,11 @@ it.each([
     );
   },
 );
-it("a genuinely omitted total_paid_amount is rejected rather than defaulted to zero", () => {
-  const raw: Record<string, unknown> = remote();
+it("a genuinely omitted total_paid_amount cannot prove accreditation", () => {
+  const raw: Record<string, unknown> = remote({
+    status: "processed",
+    status_detail: "accredited",
+  });
   delete raw.total_paid_amount;
   expect(() => snapshot(raw, payment, settings)).toThrow(
     expect.objectContaining({
@@ -471,6 +489,14 @@ it.each([
   (status, status_detail) => {
     const raw: Record<string, unknown> = remote({ status, status_detail });
     delete raw.total_paid_amount;
+    if (["created", "processing"].includes(status)) {
+      expect(snapshot(raw, payment, settings).value).toMatchObject({
+        state: "pending",
+        paid_cents: null,
+        paid_evidence: "unreported",
+      });
+      return;
+    }
     expect(() => snapshot(raw, payment, settings, "get")).toThrow(
       expect.objectContaining({
         code: "INVALID_PROVIDER_RESPONSE",
@@ -525,6 +551,14 @@ it.each(["expired", "accredited"])(
       status_detail,
     });
     delete raw.total_paid_amount;
+    if (status_detail === "expired") {
+      expect(snapshot(raw, payment, settings).value).toMatchObject({
+        state: "cancelled",
+        paid_cents: null,
+        paid_evidence: "unreported",
+      });
+      return;
+    }
     expect(() => snapshot(raw, payment, settings)).toThrow(
       expect.objectContaining({
         validation: "paid_amount",
@@ -589,5 +623,129 @@ it.each([
         settings,
       ),
     ).toThrow(PaymentError);
+  },
+);
+
+it.each([
+  ["created", "created", "pending"],
+  ["processing", "in_process", "pending"],
+  ["processing", "pending_review_manual", "pending"],
+  ["canceled", "expired", "cancelled"],
+  ["canceled", "canceled", "cancelled"],
+] as const)(
+  "v2 separates lifecycle %s/%s from unreported money",
+  (status, status_detail, state) => {
+    const raw: Record<string, unknown> = remote({ status, status_detail });
+    delete raw.total_paid_amount;
+    const s = snapshot(raw, payment, settings, "create");
+    expect(s.value).toMatchObject({
+      state,
+      paid_cents: null,
+      paid_evidence: "unreported",
+      provider_state: status,
+      provider_detail: status_detail,
+    });
+    expect(s.url).toContain(resource);
+  },
+);
+it.each([
+  { payments: [{ status: "processed", status_detail: "accredited" }] },
+  {
+    payments: [{ status: "action_required", status_detail: "waiting_capture" }],
+  },
+  { payments: [{ status: "canceled", paid_amount: "0.01" }] },
+  { payments: [{ status: "failed", confirmed_amount: "1.00" }] },
+  { payments: [{ status: "refunded" }] },
+  { refunds: [{}] },
+  { chargebacks: [{}] },
+  { payments: null },
+  { payments: [null] },
+  { payments: [{ status: ["failed"] }] },
+])(
+  "unknown money cannot hide contradictory/malformed transaction evidence %j",
+  (transactions) => {
+    expect(() =>
+      snapshot(
+        remote({ total_paid_amount: undefined, transactions }),
+        payment,
+        settings,
+      ),
+    ).toThrow(expect.objectContaining({ validation: "payment_evidence" }));
+  },
+);
+it.each([
+  { status: "approved" },
+  { status: "refunded" },
+  { status: "cancelled" },
+  { status: "expired" },
+  { reconciliation: "settled" },
+  { reconciliation: "review" },
+  { order_status: "confirmed" },
+])("unknown money cannot overwrite protected local state %j", (extra) => {
+  expect(() =>
+    snapshot(
+      remote({ total_paid_amount: undefined }),
+      { ...payment, ...extra },
+      settings,
+    ),
+  ).toThrow(expect.objectContaining({ validation: "payment_evidence" }));
+});
+it("valid non-credit transaction evidence remains unknown instead of summing it into zero", () => {
+  const result = snapshot(
+    remote({
+      total_paid_amount: undefined,
+      transactions: {
+        payments: [
+          {
+            status: "failed",
+            status_detail: "rejected_by_issuer",
+            paid_amount: "0.00",
+          },
+        ],
+        refunds: [],
+      },
+    }),
+    payment,
+    settings,
+  );
+  expect(result.value.paid_cents).toBeNull();
+});
+it.each([
+  { currency: "USD" },
+  { user_id: "999" },
+  { integration_data: { application_id: "999" } },
+  { external_reference: "foreign" },
+  { total_amount: "0.01" },
+  { items: [] },
+  { checkout_url: "https://www.mercadopago.com.ar.evil.test/" },
+  {
+    checkout_url: `https://www.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}&next=https://evil.test`,
+  },
+])(
+  "unreported creation still verifies all identity/item/URL boundaries %j",
+  (extra) => {
+    expect(() =>
+      snapshot(
+        remote({ total_paid_amount: undefined, ...extra }),
+        payment,
+        settings,
+      ),
+    ).toThrow(PaymentError);
+  },
+);
+
+it.each([undefined, "approved", "unknown-provider-detail"])(
+  "unreported money requires a recognized non-credit transaction detail (%j)",
+  (status_detail) => {
+    expect(() =>
+      snapshot(
+        remote({
+          total_paid_amount: undefined,
+          transactions: { payments: [{ status: "failed", status_detail }] },
+        }),
+        payment,
+        settings,
+      ),
+    ).toThrow(expect.objectContaining({ validation: "payment_evidence" }));
   },
 );

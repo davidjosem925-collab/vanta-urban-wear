@@ -1,5 +1,7 @@
 # Total pagado ausente: decisión de compatibilidad por estado
 
+> Registro histórico. El contrato funcional posterior y su activación manual están en [Evidencia de órdenes v2](mp-order-evidence-v2.md). Esa revisión separa importe desconocido de acreditación; no normaliza ausencia a cero.
+
 ## Resultado
 
 La evidencia de `mp-reconcile` versión 9 (`get`, `paid_amount`, `missing`) confirma que el recurso consultado no aporta `total_paid_amount`. No prueba el `status`/`status_detail` del proveedor ni que el importe pagado sea cero. El `pending` del pedido/pago local no sustituye el estado remoto.

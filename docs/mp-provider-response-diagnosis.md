@@ -1,5 +1,7 @@
 # Orders API: diagnóstico de INVALID_PROVIDER_RESPONSE
 
+> Registro histórico. El contrato funcional posterior y su activación manual están en [Evidencia de órdenes v2](mp-order-evidence-v2.md). Esa revisión separa importe desconocido de acreditación; no normaliza ausencia a cero.
+
 ## Evidencia y límite del diagnóstico
 
 Se revisaron `provider.ts`, `core.ts`, `handlers.ts`, `runtime.ts`, los contratos SQL existentes y las pruebas. No se invocó Mercado Pago, no se crearon transacciones, no se consultaron cuerpos privados ni se modificó Supabase remoto.
