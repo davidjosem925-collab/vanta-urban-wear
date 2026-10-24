@@ -305,8 +305,14 @@ export function makePaymentHandler(
       if (raw === null) return reply({ found: false });
       let c = context(raw);
       if (b.action === "create") c = await create(c);
-      else if (c.provider_order_id)
-        c = await apply(await provider.get(c.provider_order_id), c);
+      else {
+        // Recovery is read-only at the provider: search a lost POST by the
+        // frozen reference, then GET/validate it. Never fall back to create.
+        const found = c.provider_order_id
+          ? await provider.get(c.provider_order_id)
+          : await provider.find(c);
+        if (found) c = await apply(found, c);
+      }
       return reply(
         publicPayment(c),
         !c.provider_order_id && b.action === "create" ? 202 : 200,

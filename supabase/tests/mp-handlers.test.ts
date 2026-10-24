@@ -169,6 +169,7 @@ beforeAll(async () => {
     "202610200002_admin_panel.sql",
     "202610230001_mp_test_backend.sql",
     "202610240001_mp_payment_evidence.sql",
+    "202610240002_mp_created_without_detail.sql",
   ])
     await db.exec(readFileSync(`supabase/migrations/${file}`, "utf8"));
   await db.exec(`insert into public.categories(id,name,slug,active) values('${variant}','Remeras','remeras',true);
@@ -922,4 +923,127 @@ it("the investigated shape recovers an unlinked locally expired order as closed 
       .checkout_url,
   ).toBeNull();
   expect(writes).toHaveLength(1);
+});
+
+it("the observed created response without detail/money links and redirects; duplicate creates and GET recovery share one order", async () => {
+  providerState = { status_detail: undefined, total_paid_amount: undefined };
+  const first = await handler("checkout")(checkout());
+  expect(first.status).toBe(200);
+  const data = paymentView(await first.json(), reference);
+  expect(data).toMatchObject({
+    payment_status: "pending",
+    order_status: "pending",
+    checkout_url: `https://www.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}`,
+  });
+  await handler("checkout")(checkout());
+  expect((await handler("checkout")(checkout("recover"))).status).toBe(200);
+  expect(
+    await value("select mp_paid_amount_cents v from public.payments"),
+  ).toBeNull();
+  expect(await value("select mp_paid_evidence v from public.payments")).toBe(
+    "unreported",
+  );
+  expect(await value("select mp_order_id v from public.payments")).toBe(
+    resource,
+  );
+  expect(await value("select count(*)::int v from public.orders")).toBe(1);
+  expect(
+    await value("select count(*)::int v from public.stock_reservations"),
+  ).toBe(1);
+  expect(writes).toHaveLength(1);
+});
+it("lost POST without detail/money recovers by search+GET, then cancellation releases once without approving", async () => {
+  providerState = { status_detail: undefined, total_paid_amount: undefined };
+  loseResponse = true;
+  expect((await handler("checkout")(checkout())).status).toBe(503);
+  await db.exec("reset role");
+  await due();
+  await db.exec("set role service_role");
+  expect(await (await handler("worker")(worker())).json()).toMatchObject({
+    processed: 1,
+    retry: 0,
+  });
+  expect(await value("select mp_order_id v from public.payments")).toBe(
+    resource,
+  );
+  providerState = {
+    status: "processed",
+    status_detail: undefined,
+    total_paid_amount: "50001.00",
+  };
+  expect((await handler("checkout")(checkout("recover"))).status).toBe(503);
+  expect(diagnostics.at(-1)).toMatchObject({ validation: "status_detail" });
+  expect(await value("select status v from public.orders")).toBe("pending");
+  providerState = {
+    status: "canceled",
+    status_detail: "expired",
+    total_paid_amount: undefined,
+  };
+  for (let i = 0; i < 2; i++) {
+    await db.exec("reset role");
+    await due();
+    await db.exec("set role service_role");
+    expect(await (await handler("worker")(worker())).json()).toMatchObject({
+      processed: 1,
+      retry: 0,
+    });
+  }
+  expect(await value("select status v from public.orders")).toBe("cancelled");
+  expect(await value("select reserved v from public.inventory")).toBe(0);
+  expect(await value("select on_hand v from public.inventory")).toBe(8);
+  expect(
+    await value(
+      "select count(*)::int v from public.inventory_movements where kind='release'",
+    ),
+  ).toBe(1);
+  expect(writes).toHaveLength(1);
+});
+it("created without detail may later settle only with an explicit accredited detail and exact money", async () => {
+  providerState = { status_detail: undefined, total_paid_amount: undefined };
+  await handler("checkout")(checkout());
+  providerState = {
+    status: "processed",
+    status_detail: "accredited",
+    total_paid_amount: undefined,
+  };
+  expect((await handler("checkout")(checkout("recover"))).status).toBe(503);
+  expect(await value("select reserved v from public.inventory")).toBe(2);
+  providerState = {
+    status: "processed",
+    status_detail: "accredited",
+    total_paid_amount: "50001.00",
+  };
+  await handler("webhook")(await webhook());
+  await handler("webhook")(await webhook());
+  expect(await value("select status v from public.orders")).toBe("confirmed");
+  expect(
+    await value(
+      "select count(*)::int v from public.inventory_movements where kind='consume'",
+    ),
+  ).toBe(1);
+  expect(writes).toHaveLength(1);
+});
+
+it("buyer recovery searches and GETs a lost created response without waiting for worker or issuing another POST", async () => {
+  providerState = { status_detail: undefined, total_paid_amount: undefined };
+  loseResponse = true;
+  expect((await handler("checkout")(checkout())).status).toBe(503);
+  expect(await value("select mp_order_id v from public.payments")).toBeNull();
+  const indexedOrder = saved;
+  saved = null; // Simulate search indexing lag; recovery must never create.
+  const absent = await handler("checkout")(checkout("recover"));
+  expect((await absent.json()).checkout_url).toBeNull();
+  expect(await value("select mp_order_id v from public.payments")).toBeNull();
+  expect(writes).toHaveLength(1);
+  saved = indexedOrder;
+  const response = await handler("checkout")(checkout("recover"));
+  expect(response.status).toBe(200);
+  expect(paymentView(await response.json(), reference).checkout_url).toContain(
+    resource,
+  );
+  expect(writes).toHaveLength(1);
+  expect(
+    await value("select count(*)::int v from public.stock_reservations"),
+  ).toBe(1);
+  expect(await value("select reserved v from public.inventory")).toBe(2);
 });

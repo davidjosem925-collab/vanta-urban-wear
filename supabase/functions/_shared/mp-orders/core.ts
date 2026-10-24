@@ -27,6 +27,7 @@ export type Validation =
   | "bound_order_id"
   | "order_type"
   | "processing_mode"
+  | "status_detail"
   | "currency"
   | "country"
   | "reference"
