@@ -1,5 +1,7 @@
 # Checkout Pro: estado de orden y evidencia monetaria separados
 
+> Incremento posterior: para `created` con `status_detail` ausente, ver [compatibilidad acotada y migración 002](mp-created-detail-increment.md). No reaplicar la migración 001.
+
 Esta revisión sustituye la decisión conservadora de las PR #12–#15 mediante un **contrato explícito**, no mediante un default de cero. Está basada en la PR #15. No se ejecutaron consultas/transacciones MP reales, migraciones remotas, cambios de configuración ni despliegues.
 
 ## Causa y solución

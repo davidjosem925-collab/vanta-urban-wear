@@ -749,3 +749,85 @@ it.each([undefined, "approved", "unknown-provider-detail"])(
     ).toThrow(expect.objectContaining({ validation: "payment_evidence" }));
   },
 );
+
+it("created may omit both detail and paid amount without synthesizing either value", () => {
+  const raw: Record<string, unknown> = remote();
+  delete raw.status_detail;
+  delete raw.total_paid_amount;
+  expect(snapshot(raw, payment, settings, "create")).toMatchObject({
+    id: resource,
+    url: raw.checkout_url,
+    value: {
+      state: "pending",
+      detail: "pending",
+      paid_cents: null,
+      paid_evidence: "unreported",
+      provider_state: "created",
+      provider_detail: null,
+    },
+  });
+});
+it.each([null, "", 0, [], {}])(
+  "created does not treat a supplied invalid detail as absent (%j)",
+  (status_detail) => {
+    expect(() =>
+      snapshot(
+        remote({ status_detail, total_paid_amount: undefined }),
+        payment,
+        settings,
+      ),
+    ).toThrow(expect.objectContaining({ validation: "status_detail" }));
+  },
+);
+it.each([
+  "processed",
+  "processing",
+  "canceled",
+  "refunded",
+  "action_required",
+  "accredited",
+])(
+  "missing detail never authorizes a non-created state %s even with exact paid total",
+  (status) => {
+    expect(() =>
+      snapshot(
+        remote({
+          status,
+          status_detail: undefined,
+          total_paid_amount: "50001.00",
+        }),
+        payment,
+        settings,
+      ),
+    ).toThrow(expect.objectContaining({ validation: "status_detail" }));
+  },
+);
+it.each([
+  { user_id: "999" },
+  { integration_data: { application_id: "999" } },
+  { currency: "USD" },
+  { external_reference: "foreign" },
+  { total_amount: "0.01" },
+  { items: [] },
+  { checkout_url: "https://attacker.example/" },
+  {
+    transactions: {
+      payments: [{ status: "processed", status_detail: "accredited" }],
+    },
+  },
+])(
+  "created with missing fields still requires every identity/product/URL/non-credit guard (%j)",
+  (extra) => {
+    expect(() =>
+      snapshot(
+        remote({
+          status_detail: undefined,
+          total_paid_amount: undefined,
+          ...extra,
+        }),
+        payment,
+        settings,
+      ),
+    ).toThrow(PaymentError);
+  },
+);

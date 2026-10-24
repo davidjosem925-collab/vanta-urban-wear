@@ -168,6 +168,7 @@ try {
     "202610230003_transactional_email.sql",
     "202610230004_admin_payments.sql",
     "202610240001_mp_payment_evidence.sql",
+    "202610240002_mp_created_without_detail.sql",
   ])
     await sql(readFileSync(`supabase/migrations/${name}`, "utf8"));
   await sql(`update public.mp_test_config set enabled=true,seller_id='123',application_id='456';
@@ -357,7 +358,7 @@ try {
     paid_cents: null,
     paid_evidence: "unreported",
     provider_state: "created",
-    provider_detail: "created",
+    provider_detail: null,
     state: "pending",
     detail: "pending",
   };
@@ -377,6 +378,15 @@ try {
   );
   console.log(
     "PASS native concurrent unknown creation links once without inventing paid money",
+  );
+  await assert.rejects(
+    sql(
+      readFileSync(
+        "supabase/operations/mp-created-without-detail-rollback.sql",
+        "utf8",
+      ),
+    ),
+    /UNREPORTED_EVIDENCE_PRESENT/,
   );
   const races = await Promise.allSettled([
     sql(apply(evidencePayment, unknownEvidence)),
@@ -447,6 +457,12 @@ try {
   );
   console.log(
     "PASS native cancellation/approval race preserves the single terminal stock outcome",
+  );
+  await sql(
+    readFileSync(
+      "supabase/operations/mp-created-without-detail-rollback.sql",
+      "utf8",
+    ),
   );
   await assert.rejects(
     sql(

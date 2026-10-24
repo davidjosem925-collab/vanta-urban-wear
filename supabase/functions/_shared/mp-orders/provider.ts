@@ -37,7 +37,7 @@ type PaidEvidence =
       paid_cents: null;
       paid_evidence: "unreported";
       provider_state: string;
-      provider_detail: string;
+      provider_detail: string | null;
     };
 export type Snapshot = {
   reference: string;
@@ -102,6 +102,11 @@ export function snapshot(
   );
   requireField("order_type", v.type === "online");
   requireField("processing_mode", v.processing_mode === "manual");
+  requireField(
+    "status_detail",
+    (typeof v.status_detail === "string" && v.status_detail.length > 0) ||
+      (v.status === "created" && v.status_detail === undefined),
+  );
   requireField("currency", v.currency === "ARS");
   requireField("country", v.country_code === "ARG");
   requireField("reference", v.external_reference === c.reference);
@@ -134,7 +139,8 @@ export function snapshot(
             ? "invalid_text"
             : "unsupported_type";
   const pendingPair =
-    (v.status === "created" && v.status_detail === "created") ||
+    (v.status === "created" &&
+      (v.status_detail === "created" || v.status_detail === undefined)) ||
     (v.status === "processing" &&
       typeof v.status_detail === "string" &&
       ["in_process", "pending_review_manual"].includes(
@@ -196,7 +202,8 @@ export function snapshot(
       paid_cents: null,
       paid_evidence: "unreported",
       provider_state: String(v.status),
-      provider_detail: String(v.status_detail),
+      provider_detail:
+        v.status_detail === undefined ? null : String(v.status_detail),
     };
   } else {
     const paid = field("paid_amount", () => cents(paidValue), paidDetail);
