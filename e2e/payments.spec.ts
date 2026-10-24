@@ -329,3 +329,25 @@ test("rechazo y cancelación provienen del servidor; rutas antiguas y navegació
   expect(state.errors).toEqual([]);
   await overflow(page);
 });
+
+test("conserva pref_id al abrir Checkout Pro sin interpretar la redirección como aprobación", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const { orders, confirm } = await begin(page);
+  const url = checkout + "&pref_id=123-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  await page.route("**/functions/v1/mp-checkout", (route) =>
+    route.fulfill({ json: payment({ checkout_url: url }) }),
+  );
+  await page.route(url, (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<h1>Destino externo interceptado</h1>",
+    }),
+  );
+  await confirm.click();
+  await expect(page).toHaveURL(url);
+  expect(orders).toHaveLength(1);
+  expect(errors).toEqual([]);
+});

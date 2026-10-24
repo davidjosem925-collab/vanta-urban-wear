@@ -1,3 +1,4 @@
+import { validCheckoutUrl } from "../../../supabase/functions/_shared/mp-orders/checkout-url";
 import { readPublicSupabaseConfig } from "../../lib/supabase/config";
 import { readAttempt, type Attempt } from "../orders/service";
 
@@ -55,13 +56,7 @@ export function readPaymentSession(raw: string | null): PaymentSession | null {
 }
 /** Exact provider URL only. Never follow a return URL, query parameter or stored checkout URL. */
 export function checkoutUrl(raw: unknown): string {
-  if (
-    typeof raw !== "string" ||
-    !/^https:\/\/www\.mercadopago\.com\.ar\/checkout\/v1\/redirect\?order_id=ORDTST[A-Z0-9]{10,80}$/.test(
-      raw,
-    )
-  )
-    throw new Error("INVALID_RESPONSE");
+  if (!validCheckoutUrl(raw)) throw new Error("INVALID_RESPONSE");
   return raw;
 }
 export function paymentView(raw: unknown, reference: string): PaymentView {

@@ -1,3 +1,4 @@
+import { validCheckoutUrl } from "./checkout-url.ts";
 /** Server-only protocol primitives. Do not import from src/. */
 export type Code =
   | "NOT_CONFIGURED"
@@ -194,11 +195,7 @@ export function cents(value: unknown) {
 }
 export function checkoutUrl(value: unknown, id: string): string | null {
   if (value === undefined || value === null) return null;
-  if (
-    typeof value !== "string" ||
-    value !==
-      `https://www.mercadopago.com.ar/checkout/v1/redirect?order_id=${id}`
-  )
+  if (!validCheckoutUrl(value, id))
     throw new PaymentError("INVALID_PROVIDER_RESPONSE");
   return value;
 }
