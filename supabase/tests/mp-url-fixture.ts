@@ -1,0 +1,41 @@
+import { resource } from "./mp-fixture";
+export const prefix = "https://www.mercadopago.com.ar/checkout/v1/redirect?";
+export const preference = "123-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+export const validUrls = [
+  `${prefix}order_id=${resource}`,
+  `${prefix}order_id=${resource}&pref_id=${preference}`,
+  `${prefix}pref_id=${preference}&order_id=${resource}`,
+  `${prefix}order_id=${resource}&pref_id=Opaque_1-2`,
+];
+export const invalidUrls = [
+  `${prefix}order_id=${resource}&pref_id=`,
+  `${prefix}order_id=${resource}&pref_id=${"a".repeat(201)}`,
+  `${prefix}order_id=${resource}&pref_id=a&pref_id=b`,
+  `${prefix}order_id=${resource}&order_id=${resource}`,
+  `${prefix}order_id=${resource}&pref_id=a&order_id=${resource}`,
+  `${prefix}order_id=${resource}&pref_id=a&next=https://evil.test`,
+  `${prefix}order_id=${resource}&pref_id=a#`,
+  `${prefix}order_id=${resource}&pref_id=a#fragment`,
+  `${prefix}order_id=${resource}&pref_id=../evil`,
+  `${prefix}order_id=${resource}&pref_id=%61`,
+  `${prefix}order_id=${resource}&pref%5fid=a`,
+  `${prefix}order_id=${resource}&pref_id=a+b`,
+  `${prefix}order_id=${resource}&pref_id=a=b`,
+  `${prefix}order_id=${resource}&pref_id=ñ`,
+  `${prefix}order_id=${resource}&pref_id=a\n`,
+  `${prefix}order_id=${resource}\r\n`,
+  `${prefix}order_id=${resource}&`,
+  `${prefix}pref_id=a`,
+  `${prefix}order_id=ORDPROD0123456789&pref_id=a`,
+  `${prefix}order_id=${resource.toLowerCase()}&pref_id=a`,
+  `${prefix}order_id=${resource}&PREF_ID=a`,
+  `${prefix}order_id=${resource}&pref_id=a`.replace("https:", "http:"),
+  `${prefix}order_id=${resource}`.replace(".com.ar", ".com.ar.evil.test"),
+  `${prefix}order_id=${resource}`.replace("www.", "attacker@www."),
+  `${prefix}order_id=${resource}`.replace(".com.ar/", ".com.ar:443/"),
+  `${prefix}order_id=${resource}`.replace(".com.ar/", ".com.ar:8443/"),
+  `${prefix}order_id=${resource}`.replace("/redirect?", "/x/../redirect?"),
+  `${prefix}order_id=${resource}`.replace("www.", "sandbox."),
+  ` ${prefix}order_id=${resource}`,
+  `${prefix}order_id=${resource}`.replace("https://", "https:\\\\"),
+];

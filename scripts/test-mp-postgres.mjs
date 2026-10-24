@@ -146,8 +146,12 @@ const prepare = (o) =>
   sql(
     `set role service_role;select public.mp_test_prepare('${o.reference}','${owner}',true,'https://shop.example');`,
   );
-const apply = (p, extra = {}) =>
-  `set role service_role;select public.mp_test_apply('${p.payment_id}','${resource}','https://www.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}','${JSON.stringify({ reference: p.reference, seller_id: "123", application_id: "456", currency: "ARS", amount_cents: 5000100, paid_cents: 5000100, updated_at: new Date().toISOString(), state: "approved", detail: "accredited", ...extra })}');`;
+const apply = (
+  p,
+  extra = {},
+  url = `https://www.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}`,
+) =>
+  `set role service_role;select public.mp_test_apply('${p.payment_id}','${resource}','${url}','${JSON.stringify({ reference: p.reference, seller_id: "123", application_id: "456", currency: "ARS", amount_cents: 5000100, paid_cents: 5000100, updated_at: new Date().toISOString(), state: "approved", detail: "accredited", ...extra })}');`;
 try {
   await sql(`create database ${database};`, "postgres");
   await sql(`do $$begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon;end if;if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated;end if;if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role bypassrls;end if;end$$;
@@ -169,6 +173,7 @@ try {
     "202610230004_admin_payments.sql",
     "202610240001_mp_payment_evidence.sql",
     "202610240002_mp_created_without_detail.sql",
+    "202610240003_mp_checkout_pref_id.sql",
   ])
     await sql(readFileSync(`supabase/migrations/${name}`, "utf8"));
   await sql(`update public.mp_test_config set enabled=true,seller_id='123',application_id='456';
@@ -362,6 +367,40 @@ try {
     state: "pending",
     detail: "pending",
   };
+  const prefUrl = `https://www.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}&pref_id=123-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`;
+  await Promise.all([
+    sql(apply(evidencePayment, unknownEvidence, prefUrl)),
+    sql(apply(evidencePayment, unknownEvidence, prefUrl)),
+  ]);
+  assert.equal(
+    await sql("select mp_checkout_url from public.payments"),
+    prefUrl,
+  );
+  assert.equal(
+    await sql("select mp_paid_amount_cents is null from public.payments"),
+    "t",
+  );
+  await assert.rejects(
+    sql(
+      apply(evidencePayment, unknownEvidence, prefUrl + "&pref_id=duplicate"),
+    ),
+    /INVALID_PAYMENT/,
+  );
+  await assert.rejects(
+    sql(
+      readFileSync(
+        "supabase/operations/mp-checkout-pref-id-rollback.sql",
+        "utf8",
+      ),
+    ),
+    /PREF_ID_URL_PRESENT/,
+  );
+  console.log(
+    "PASS native pref_id URL preserved, duplicate parameter blocked and rollback refuses routing loss",
+  );
+  await reset();
+  o = await order();
+  evidencePayment = JSON.parse(await prepare(o));
   await Promise.all([
     sql(apply(evidencePayment, unknownEvidence)),
     sql(apply(evidencePayment, unknownEvidence)),
@@ -386,7 +425,7 @@ try {
         "utf8",
       ),
     ),
-    /UNREPORTED_EVIDENCE_PRESENT/,
+    /UNEXPECTED_PAYMENT_RPC/,
   );
   const races = await Promise.allSettled([
     sql(apply(evidencePayment, unknownEvidence)),
@@ -457,6 +496,12 @@ try {
   );
   console.log(
     "PASS native cancellation/approval race preserves the single terminal stock outcome",
+  );
+  await sql(
+    readFileSync(
+      "supabase/operations/mp-checkout-pref-id-rollback.sql",
+      "utf8",
+    ),
   );
   await sql(
     readFileSync(

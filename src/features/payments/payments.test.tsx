@@ -429,3 +429,19 @@ it("corrupt payment identity blocks a new attachment rather than overwriting an 
   expect(sessionStorage.getItem(paymentStorageKey)).toBe("broken");
   expect(request).not.toHaveBeenCalled();
 });
+
+it("redirects to the exact provider pref_id URL and preserves private recovery before navigation", async () => {
+  const url =
+    view.checkout_url + "&pref_id=123-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  const request = vi.fn().mockResolvedValue({ ...view, checkout_url: url });
+  const redirect = vi.fn();
+  const hook = renderHook(() =>
+    usePayment({ enabled: true, request }, redirect),
+  );
+  await act(async () => hook.result.current.attach(receipt, session.attempt));
+  expect(redirect).toHaveBeenCalledWith(url);
+  expect(readPaymentSession(sessionStorage.getItem(paymentStorageKey))).toEqual(
+    session,
+  );
+  expect(hook.result.current.view?.payment_status).toBe("pending");
+});

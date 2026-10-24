@@ -170,6 +170,7 @@ beforeAll(async () => {
     "202610230001_mp_test_backend.sql",
     "202610240001_mp_payment_evidence.sql",
     "202610240002_mp_created_without_detail.sql",
+    "202610240003_mp_checkout_pref_id.sql",
   ])
     await db.exec(readFileSync(`supabase/migrations/${file}`, "utf8"));
   await db.exec(`insert into public.categories(id,name,slug,active) values('${variant}','Remeras','remeras',true);
@@ -1046,4 +1047,69 @@ it("buyer recovery searches and GETs a lost created response without waiting for
     await value("select count(*)::int v from public.stock_reservations"),
   ).toBe(1);
   expect(await value("select reserved v from public.inventory")).toBe(2);
+});
+
+it.each([false, true])(
+  "preserves pref_id through POST or GET hydration, duplicate clicks and recovery (GET=%s)",
+  async (hydrate) => {
+    const url = `https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=123-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee&order_id=${resource}`;
+    providerState = {
+      status_detail: undefined,
+      total_paid_amount: undefined,
+      checkout_url: url,
+    };
+    if (hydrate) postResponse = { checkout_url: undefined };
+    const first = await handler("checkout")(checkout());
+    expect(first.status).toBe(200);
+    expect(paymentView(await first.json(), reference).checkout_url).toBe(url);
+    for (const action of ["create", "recover"])
+      expect(
+        (await (await handler("checkout")(checkout(action))).json())
+          .checkout_url,
+      ).toBe(url);
+    expect(await value("select mp_checkout_url v from public.payments")).toBe(
+      url,
+    );
+    expect(
+      await value("select mp_paid_amount_cents v from public.payments"),
+    ).toBeNull();
+    expect(await value("select status v from public.orders")).toBe("pending");
+    expect(
+      await value("select count(*)::int v from public.stock_reservations"),
+    ).toBe(1);
+    expect(writes).toHaveLength(1);
+  },
+);
+it("an unsafe POST URL remains unlinked; authorized search+GET can recover a safe pref_id URL without another POST", async () => {
+  const url = `https://www.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}&pref_id=opaque_1`;
+  providerState = {
+    status_detail: undefined,
+    total_paid_amount: undefined,
+    checkout_url: url,
+  };
+  postResponse = { checkout_url: url + "&pref_id=duplicate" };
+  expect((await handler("checkout")(checkout())).status).toBe(503);
+  expect(diagnostics.at(-1)).toMatchObject({
+    dependency: "create",
+    validation: "checkout_url",
+  });
+  expect(await value("select mp_order_id v from public.payments")).toBeNull();
+  providerState.checkout_url = url + "&next=https://evil.test";
+  expect((await handler("checkout")(checkout("recover"))).status).toBe(503);
+  expect(diagnostics.at(-1)).toMatchObject({
+    dependency: "get",
+    validation: "checkout_url",
+  });
+  expect(await value("select mp_order_id v from public.payments")).toBeNull();
+  providerState.checkout_url = url;
+  const recovered = await handler("checkout")(checkout("recover"));
+  expect(recovered.status).toBe(200);
+  expect(paymentView(await recovered.json(), reference).checkout_url).toBe(url);
+  expect(await value("select mp_order_id v from public.payments")).toBe(
+    resource,
+  );
+  expect(
+    await value("select count(*)::int v from public.stock_reservations"),
+  ).toBe(1);
+  expect(writes).toHaveLength(1);
 });
