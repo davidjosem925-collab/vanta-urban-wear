@@ -1,5 +1,7 @@
 # Orden `canceled/expired` sin total pagado
 
+> Registro histórico. El contrato funcional posterior y su activación manual están en [Evidencia de órdenes v2](mp-order-evidence-v2.md). Esa revisión separa importe desconocido de acreditación; no normaliza ausencia a cero.
+
 ## Evidencia recibida y decisión
 
 La consulta privada del propietario encontró una única orden con `status=canceled`, `status_detail=expired` y sin `total_paid_amount`. Esto identifica por qué la versión 9 rechaza el GET en `paid_amount/missing`; no es un timeout ni una falla de firma. No se volvió a consultar a MP ni se crearon transacciones durante este trabajo.

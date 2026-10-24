@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createDemoDb } from "./demo-fixture";
+import { paymentView } from "../../src/features/payments/service";
 import {
   hash,
   PaymentError,
@@ -21,6 +22,7 @@ let reference = "",
   loseResponse = false,
   realSeller = false;
 let diagnostics: Diagnostic[] = [];
+let postResponse: Record<string, unknown> = {};
 let writes: { url: string; body: unknown; key: string | null }[] = [];
 const fetcher = vi.fn(async (url: RequestInfo | URL, options?: RequestInit) => {
   const path = String(url);
@@ -48,6 +50,15 @@ const fetcher = vi.fn(async (url: RequestInfo | URL, options?: RequestInit) => {
       loseResponse = false;
       throw new TypeError("private-fixture-error");
     }
+    return Response.json(
+      remote({
+        external_reference: reference,
+        items: saved.items,
+        ...providerState,
+        ...postResponse,
+      }),
+      { status: 201 },
+    );
   }
   if (path.endsWith("/cancel"))
     providerState = {
@@ -157,6 +168,7 @@ beforeAll(async () => {
     "202610200001_demo_orders.sql",
     "202610200002_admin_panel.sql",
     "202610230001_mp_test_backend.sql",
+    "202610240001_mp_payment_evidence.sql",
   ])
     await db.exec(readFileSync(`supabase/migrations/${file}`, "utf8"));
   await db.exec(`insert into public.categories(id,name,slug,active) values('${variant}','Remeras','remeras',true);
@@ -169,6 +181,7 @@ beforeEach(async () => {
   writes = [];
   saved = null;
   providerState = {};
+  postResponse = {};
   loseResponse = false;
   realSeller = false;
   vi.mocked(fetcher).mockClear();
@@ -525,7 +538,11 @@ it.each([
 ] as const)(
   "unlinked GET failure reports only paid-amount category (%j), never links/settles or duplicates a reservation",
   async (total_paid_amount, validation_detail) => {
-    providerState = { total_paid_amount };
+    providerState = {
+      status: "processed",
+      status_detail: "accredited",
+      total_paid_amount,
+    };
     const first = await handler("checkout")(checkout());
     expect(first.status).toBe(503);
     expect(await first.json()).toEqual({ error: "INVALID_PROVIDER_RESPONSE" });
@@ -566,9 +583,9 @@ it.each([
 );
 
 it.each([
-  ["created", "created"],
-  ["processing", "in_process"],
   ["processed", "accredited"],
+  ["processed", "partially_refunded"],
+  ["refunded", "refunded"],
 ] as const)(
   "missing GET amount in %s/%s never binds or settles an unlinked order by assuming zero",
   async (status, status_detail) => {
@@ -604,12 +621,16 @@ it.each([
   },
 );
 
-it("local TTL releases an unlinked reservation once despite incomplete canceled/expired GET; a late explicit approval cannot consume it", async () => {
-  providerState = { total_paid_amount: undefined };
+it("local TTL releases an unlinked reservation once despite a contradictory terminal GET; a late explicit approval cannot consume it", async () => {
+  providerState = {
+    status: "processed",
+    status_detail: "accredited",
+    total_paid_amount: undefined,
+  };
   expect((await handler("checkout")(checkout())).status).toBe(503);
   providerState = {
     status: "canceled",
-    status_detail: "expired",
+    status_detail: "accredited",
     total_paid_amount: undefined,
   };
   await db.exec("reset role");
@@ -686,5 +707,219 @@ it("local TTL releases an unlinked reservation once despite incomplete canceled/
       "select count(*)::int v from public.inventory_movements where kind='consume'",
     ),
   ).toBe(0);
+  expect(writes).toHaveLength(1);
+});
+
+it("POST created without paid amount links immediately and returns a frontend-valid redirect; repeated creates/recovery do not POST twice", async () => {
+  providerState = { total_paid_amount: undefined };
+  const response = await handler("checkout")(checkout());
+  expect(response.status).toBe(200);
+  const data = await response.json();
+  const view = paymentView(data, reference);
+  expect(view.checkout_url).toBe(
+    `https://www.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}`,
+  );
+  expect(view.payment_status).toBe("pending");
+  expect(await value("select mp_order_id v from public.payments")).toBe(
+    resource,
+  );
+  expect(
+    await value("select mp_paid_amount_cents v from public.payments"),
+  ).toBeNull();
+  expect(await value("select mp_paid_evidence v from public.payments")).toBe(
+    "unreported",
+  );
+  expect((await handler("checkout")(checkout())).status).toBe(200);
+  expect((await handler("checkout")(checkout("recover"))).status).toBe(200);
+  expect(writes).toHaveLength(1);
+  expect(await value("select reserved v from public.inventory")).toBe(2);
+  providerState = {
+    status: "processed",
+    status_detail: "accredited",
+    total_paid_amount: "50001.00",
+  };
+  await handler("webhook")(await webhook());
+  await handler("webhook")(await webhook());
+  expect(await value("select mp_paid_evidence v from public.payments")).toBe(
+    "reported",
+  );
+  expect(
+    await value("select mp_paid_amount_cents::int v from public.payments"),
+  ).toBe(5000100);
+  expect(await value("select status v from public.orders")).toBe("confirmed");
+  expect(
+    await value(
+      "select count(*)::int v from public.inventory_movements where kind='consume'",
+    ),
+  ).toBe(1);
+});
+it("valid POST without URL binds before GET retrieves URL from the same resource; GET without URL preserves it", async () => {
+  providerState = { total_paid_amount: undefined };
+  postResponse = { checkout_url: undefined };
+  const response = await handler("checkout")(checkout());
+  expect(response.status).toBe(200);
+  expect((await response.json()).checkout_url).toContain(resource);
+  expect(writes).toHaveLength(1);
+  expect(
+    vi
+      .mocked(fetcher)
+      .mock.calls.some(([url]) =>
+        String(url).endsWith(`/v1/orders/${resource}`),
+      ),
+  ).toBe(true);
+  providerState = { total_paid_amount: undefined, checkout_url: undefined };
+  const recovered = await handler("checkout")(checkout("recover"));
+  expect((await recovered.json()).checkout_url).toContain(resource);
+  expect(writes).toHaveLength(1);
+});
+it("a lost POST response recovers an unreported pending resource by GET without another creation", async () => {
+  providerState = { total_paid_amount: undefined };
+  loseResponse = true;
+  expect((await handler("checkout")(checkout())).status).toBe(503);
+  await db.exec("reset role");
+  await due();
+  await db.exec("set role service_role");
+  expect(await (await handler("worker")(worker())).json()).toMatchObject({
+    processed: 1,
+    retry: 0,
+  });
+  expect(await value("select mp_order_id v from public.payments")).toBe(
+    resource,
+  );
+  expect(await value("select mp_paid_evidence v from public.payments")).toBe(
+    "unreported",
+  );
+  expect(writes).toHaveLength(1);
+});
+it("unreported canceled/expired GET closes/releases once and never exposes a checkout URL", async () => {
+  providerState = { total_paid_amount: undefined };
+  await handler("checkout")(checkout());
+  providerState = {
+    status: "canceled",
+    status_detail: "expired",
+    total_paid_amount: undefined,
+  };
+  for (let i = 0; i < 2; i++) {
+    await db.exec("reset role");
+    await due();
+    await db.exec("set role service_role");
+    expect(await (await handler("worker")(worker())).json()).toMatchObject({
+      processed: 1,
+      retry: 0,
+    });
+  }
+  expect(await value("select status v from public.orders")).toBe("cancelled");
+  expect(await value("select mp_reconciliation v from public.payments")).toBe(
+    "closed",
+  );
+  expect(await value("select reserved v from public.inventory")).toBe(0);
+  expect(await value("select on_hand v from public.inventory")).toBe(8);
+  expect(
+    await value(
+      "select count(*)::int v from public.inventory_movements where kind='release'",
+    ),
+  ).toBe(1);
+  expect(
+    (await (await handler("checkout")(checkout("recover"))).json())
+      .checkout_url,
+  ).toBeNull();
+  expect(writes).toHaveLength(1);
+});
+
+it("a reservation expiring during POST cannot expose a redirect or reserve again", async () => {
+  providerState = { total_paid_amount: undefined };
+  const expireDuringApply: Rpc = async (name, args) => {
+    if (name === "mp_test_apply")
+      await db.exec(
+        "reset role;update public.orders set created_at=created_at-interval '61 minutes',reservation_expires_at=reservation_expires_at-interval '61 minutes';set role service_role",
+      );
+    return rpc(name, args);
+  };
+  const response = await handler("checkout", {}, expireDuringApply)(checkout());
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    order_status: "expired",
+    checkout_url: null,
+  });
+  expect(await value("select reserved v from public.inventory")).toBe(0);
+  expect(await value("select on_hand v from public.inventory")).toBe(8);
+  expect(writes).toHaveLength(1);
+});
+it("URL hydration never admits an unsafe GET URL and keeps the same linked resource for recovery", async () => {
+  providerState = {
+    total_paid_amount: undefined,
+    checkout_url: "https://attacker.example/",
+  };
+  postResponse = { checkout_url: undefined };
+  expect((await handler("checkout")(checkout())).status).toBe(503);
+  expect(diagnostics.at(-1)).toMatchObject({
+    dependency: "get",
+    validation: "checkout_url",
+  });
+  expect(await value("select mp_order_id v from public.payments")).toBe(
+    resource,
+  );
+  providerState = { total_paid_amount: undefined };
+  const response = await handler("checkout")(checkout("recover"));
+  expect((await response.json()).checkout_url).toContain(resource);
+  expect(writes).toHaveLength(1);
+});
+it("a sparse POST cannot bypass required seller/currency evidence; GET recovery may later validate the complete resource", async () => {
+  providerState = { total_paid_amount: undefined };
+  postResponse = { currency: undefined };
+  expect((await handler("checkout")(checkout())).status).toBe(503);
+  expect(diagnostics.at(-1)).toMatchObject({
+    dependency: "create",
+    validation: "currency",
+  });
+  expect(await value("select mp_order_id v from public.payments")).toBeNull();
+  await db.exec("reset role");
+  await due();
+  await db.exec("set role service_role");
+  expect(await (await handler("worker")(worker())).json()).toMatchObject({
+    processed: 1,
+    retry: 0,
+  });
+  expect(await value("select mp_order_id v from public.payments")).toBe(
+    resource,
+  );
+  expect(writes).toHaveLength(1);
+});
+
+it("the investigated shape recovers an unlinked locally expired order as closed without reopening stock or returning a URL", async () => {
+  providerState = { total_paid_amount: undefined };
+  loseResponse = true;
+  expect((await handler("checkout")(checkout())).status).toBe(503);
+  await db.exec(
+    "reset role;update public.orders set created_at=created_at-interval '61 minutes',reservation_expires_at=reservation_expires_at-interval '61 minutes';select public.demo_expire_orders()",
+  );
+  await due();
+  await db.exec("set role service_role");
+  providerState = {
+    status: "canceled",
+    status_detail: "expired",
+    total_paid_amount: undefined,
+    checkout_url: undefined,
+  };
+  expect(await (await handler("worker")(worker())).json()).toMatchObject({
+    processed: 1,
+    retry: 0,
+  });
+  expect(await value("select mp_order_id v from public.payments")).toBe(
+    resource,
+  );
+  expect(await value("select mp_reconciliation v from public.payments")).toBe(
+    "closed",
+  );
+  expect(
+    await value("select mp_paid_amount_cents v from public.payments"),
+  ).toBeNull();
+  expect(await value("select status v from public.orders")).toBe("expired");
+  expect(await value("select reserved v from public.inventory")).toBe(0);
+  expect(await value("select on_hand v from public.inventory")).toBe(8);
+  expect(
+    (await (await handler("checkout")(checkout("recover"))).json())
+      .checkout_url,
+  ).toBeNull();
   expect(writes).toHaveLength(1);
 });

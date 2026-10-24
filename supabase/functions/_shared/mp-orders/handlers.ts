@@ -50,7 +50,17 @@ export function makePaymentHandler(
       (await rpc("mp_test_claim_create", { p_id: c.payment_id })) !== true
     )
       return c;
-    return apply(await provider.create(c), c, "create");
+    const linked = await apply(await provider.create(c), c, "create");
+    // A valid POST may omit the URL. Bind first, then GET the same verified ID;
+    // never POST another order or synthesize a redirect URL.
+    if (
+      linked.provider_order_id &&
+      !linked.checkout_url &&
+      linked.order_status === "pending" &&
+      linked.status === "pending"
+    )
+      return apply(await provider.get(linked.provider_order_id), linked);
+    return linked;
   }
   async function reconcile(c: Context) {
     if (!c.provider_order_id) {

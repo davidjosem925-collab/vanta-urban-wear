@@ -12,13 +12,39 @@ import {
   type PaidAmountDetail,
 } from "./core.ts";
 import { jsonBody } from "./core.ts";
+// Known non-credit transaction details only. Unknown/credit-bearing details fail closed.
+const nonCreditDetails: Record<string, readonly string[]> = {
+  created: ["created"],
+  processing: ["in_process", "pending_review_manual"],
+  canceled: ["expired", "canceled", "canceled_transaction"],
+  failed: [
+    "bad_filled_card_data",
+    "invalid_card_token",
+    "high_risk",
+    "rejected_by_issuer",
+    "required_call_for_authorize",
+    "max_attempts_exceeded",
+    "card_disabled",
+    "insufficient_amount",
+    "amount_limit_exceeded",
+    "invalid_installments",
+    "processing_error",
+  ],
+};
+type PaidEvidence =
+  | { paid_cents: number; paid_evidence: "reported" }
+  | {
+      paid_cents: null;
+      paid_evidence: "unreported";
+      provider_state: string;
+      provider_detail: string;
+    };
 export type Snapshot = {
   reference: string;
   seller_id: string;
   application_id: string;
   currency: "ARS";
   amount_cents: number;
-  paid_cents: number;
   updated_at: string;
   state:
     | "pending"
@@ -35,7 +61,7 @@ export type Snapshot = {
     | "refunded"
     | "partial"
     | "unknown";
-};
+} & PaidEvidence;
 export function snapshot(
   raw: unknown,
   c: Context,
@@ -107,16 +133,85 @@ export function snapshot(
           : typeof paidValue === "string"
             ? "invalid_text"
             : "unsupported_type";
-  const paid = field("paid_amount", () => cents(paidValue), paidDetail);
-  if (paid > c.amount_cents)
-    throw new PaymentError(
-      "INVALID_PROVIDER_RESPONSE",
-      503,
-      dependency,
-      undefined,
-      "paid_amount",
-      "exceeds_order",
+  const pendingPair =
+    (v.status === "created" && v.status_detail === "created") ||
+    (v.status === "processing" &&
+      typeof v.status_detail === "string" &&
+      ["in_process", "pending_review_manual"].includes(
+        String(v.status_detail),
+      ));
+  const cancelledPair =
+    v.status === "canceled" &&
+    typeof v.status_detail === "string" &&
+    ["expired", "canceled", "canceled_transaction"].includes(
+      String(v.status_detail),
     );
+  let evidence: PaidEvidence;
+  if (paidValue === undefined && (pendingPair || cancelledPair)) {
+    // Unknown is not zero. Only non-credit lifecycle events can carry no amount.
+    requireField(
+      "payment_evidence",
+      ["pending", "rejected", "cancelled", "expired"].includes(c.status) &&
+        ["pending", "cancelled", "expired"].includes(c.order_status) &&
+        ["unlinked", "awaiting", "closed"].includes(c.reconciliation) &&
+        (!pendingPair || ["pending", "rejected"].includes(c.status)),
+    );
+    if (v.transactions !== undefined) {
+      const t = field("payment_evidence", () => record(v.transactions));
+      for (const name of ["refunds", "chargebacks"]) {
+        if (t[name] !== undefined)
+          requireField(
+            "payment_evidence",
+            Array.isArray(t[name]) && (t[name] as unknown[]).length === 0,
+          );
+      }
+      if (t.payments !== undefined) {
+        requireField(
+          "payment_evidence",
+          Array.isArray(t.payments) && t.payments.length <= 100,
+        );
+        for (const raw of t.payments as unknown[]) {
+          const tx = field("payment_evidence", () => record(raw));
+          const allowed =
+            cancelledPair || v.status === "created"
+              ? ["failed", "canceled"]
+              : ["created", "processing", "failed", "canceled"];
+          requireField(
+            "payment_evidence",
+            typeof tx.status === "string" &&
+              allowed.includes(tx.status) &&
+              typeof tx.status_detail === "string" &&
+              nonCreditDetails[tx.status]?.includes(tx.status_detail) === true,
+          );
+          for (const name of ["paid_amount", "confirmed_amount"])
+            if (tx[name] !== undefined)
+              requireField(
+                "payment_evidence",
+                field("payment_evidence", () => cents(tx[name])) === 0,
+              );
+        }
+      }
+    }
+    evidence = {
+      paid_cents: null,
+      paid_evidence: "unreported",
+      provider_state: String(v.status),
+      provider_detail: String(v.status_detail),
+    };
+  } else {
+    const paid = field("paid_amount", () => cents(paidValue), paidDetail);
+    if (paid > c.amount_cents)
+      throw new PaymentError(
+        "INVALID_PROVIDER_RESPONSE",
+        503,
+        dependency,
+        undefined,
+        "paid_amount",
+        "exceeds_order",
+      );
+    evidence = { paid_cents: paid, paid_evidence: "reported" };
+  }
+  const paid = evidence.paid_cents;
   requireField(
     "updated_at",
     typeof v.last_updated_date === "string" &&
@@ -195,7 +290,7 @@ export function snapshot(
       application_id: c.application_id,
       currency: "ARS",
       amount_cents: c.amount_cents,
-      paid_cents: paid,
+      ...evidence,
       updated_at: v.last_updated_date as string,
       state,
       detail,
