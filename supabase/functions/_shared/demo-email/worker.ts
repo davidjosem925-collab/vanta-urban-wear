@@ -506,6 +506,11 @@ export function createEmailRpc(
         redirect: "error",
       });
       if (!r.ok) throw Error();
+      // Only maintenance returns void. Data-bearing RPCs must still return JSON.
+      if (r.status === 204) {
+        if (name !== "demo_email_maintenance") throw Error();
+        return null;
+      }
       return await jsonBody(r, 524288);
     } catch {
       throw Error("RPC_UNAVAILABLE");
