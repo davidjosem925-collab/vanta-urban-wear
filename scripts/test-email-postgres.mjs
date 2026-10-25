@@ -148,8 +148,8 @@ const result = (j) =>
     `set role service_role;select public.demo_email_result('${j.id}','${j.lease}','accepted','20000000-0000-0000-0000-000000000001',60);`,
   );
 const resource = "ORDTST01KS5AJ6HTK2HRQ3XJ3C2JCKP9";
-const apply = (p) =>
-  `set role service_role;select public.mp_test_apply('${p.payment_id}','${resource}','https://www.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}','${JSON.stringify({ reference: p.reference, seller_id: "123", application_id: "456", currency: "ARS", amount_cents: 5000100, paid_cents: 5000100, updated_at: new Date().toISOString(), state: "approved", detail: "accredited" })}');`;
+const apply = (p, extra = {}) =>
+  `set role service_role;select public.mp_test_apply('${p.payment_id}','${resource}','https://www.mercadopago.com.ar/checkout/v1/redirect?order_id=${resource}','${JSON.stringify({ reference: p.reference, seller_id: "123", application_id: "456", currency: "ARS", amount_cents: 5000100, paid_cents: 5000100, updated_at: new Date().toISOString(), state: "approved", detail: "accredited", ...extra })}');`;
 try {
   await sql(`create database ${database};`, "postgres");
   await sql(`do $$begin if not exists(select 1 from pg_roles where rolname='anon') then create role anon;end if;if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated;end if;if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role bypassrls;end if;end$$;
@@ -527,6 +527,110 @@ try {
     /Email activity exists/,
   );
   assert.equal(await sql("select count(*) from public.orders"), "1");
+  await reset();
+  // Incremental policy: preserve the historical scenarios above, then test the
+  // new contract over the complete payment-evidence migration chain.
+  const legacyOrder = await order();
+  const legacyJob = JSON.parse(
+    await sql("set role service_role;select public.demo_email_claim();"),
+  ).sends[0];
+  await freeze(legacyJob);
+  await begin(legacyJob);
+  await result(legacyJob);
+  const legacyAccepted = await sql(
+    "select to_jsonb(e)::text from public.demo_email_outbox e where event='order_received'",
+  );
+  const legacyPayment = JSON.parse(
+    await sql(
+      `set role service_role;select public.mp_test_prepare('${legacyOrder.reference}','${owner}',true,'https://shop.example');`,
+    ),
+  );
+  await sql(
+    apply(legacyPayment, {
+      state: "pending",
+      detail: "pending",
+      paid_cents: 0,
+    }),
+  );
+  await sql(
+    `update public.demo_email_outbox set first_attempt_at=clock_timestamp(),request_ciphertext='${cipher}',request_hash=repeat('a',64) where event='payment_pending'`,
+  );
+  for (const name of [
+    "202610240001_mp_payment_evidence.sql",
+    "202610240002_mp_created_without_detail.sql",
+    "202610240003_mp_checkout_pref_id.sql",
+    "202610250001_mp_approved_email_only.sql",
+  ])
+    await sql(readFileSync(`supabase/migrations/${name}`, "utf8"));
+  assert.equal(
+    await sql(
+      "select to_jsonb(e)::text from public.demo_email_outbox e where event='order_received'",
+    ),
+    legacyAccepted,
+  );
+  assert.equal(
+    await sql(
+      "select state from public.demo_email_outbox where event='payment_pending'",
+    ),
+    "suppressed",
+  );
+  console.log(
+    "PASS new email policy suppresses frozen legacy MP retries without touching accepted messages",
+  );
+  await reset();
+  const newOrder = await order();
+  const newPayment = JSON.parse(
+    await sql(
+      `set role service_role;select public.mp_test_prepare('${newOrder.reference}','${owner}',true,'https://shop.example');`,
+    ),
+  );
+  assert.equal(await sql("select count(*) from public.demo_email_outbox"), "0");
+  await Promise.all([sql(apply(newPayment)), sql(apply(newPayment))]);
+  assert.equal(
+    await sql("select string_agg(event,',') from public.demo_email_outbox"),
+    "payment_approved",
+  );
+  assert.equal(
+    await sql("select on_hand||':'||reserved from public.inventory"),
+    "6:0",
+  );
+  console.log(
+    "PASS new policy concurrent verified MP approvals enqueue one approval and consume inventory once",
+  );
+  const newClaims = await Promise.all([
+    sql("set role service_role;select public.demo_email_claim();"),
+    sql("set role service_role;select public.demo_email_claim();"),
+  ]);
+  const approvalJobs = newClaims.flatMap((x) => JSON.parse(x).sends);
+  assert.equal(approvalJobs.length, 1);
+  await freeze(approvalJobs[0]);
+  assert.equal(await begin(approvalJobs[0]), "t");
+  await result(approvalJobs[0]);
+  assert.equal(
+    JSON.parse(
+      await sql("set role service_role;select public.demo_email_claim();"),
+    ).sends.length,
+    0,
+  );
+  console.log(
+    "PASS new policy concurrent claims retain one approved email identity and no duplicate sends",
+  );
+  await reset();
+  await sql(
+    readFileSync(
+      "supabase/operations/mp-approved-email-only-rollback.sql",
+      "utf8",
+    ),
+  );
+  for (const file of [
+    "mp-checkout-pref-id-rollback.sql",
+    "mp-created-without-detail-rollback.sql",
+    "mp-payment-evidence-rollback.sql",
+  ])
+    await sql(readFileSync(`supabase/operations/${file}`, "utf8"));
+  console.log(
+    "PASS new policy reverses only function definitions and preserves the prior migration chain",
+  );
   await reset();
   await sql(
     readFileSync("supabase/operations/stage-8-admin-rollback.sql", "utf8"),

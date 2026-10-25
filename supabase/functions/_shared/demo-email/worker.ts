@@ -6,7 +6,7 @@ import {
   seal,
   unseal,
 } from "./privacy.ts";
-import { emailTemplate } from "./template.ts";
+import { emailSnapshot, emailTemplate } from "./template.ts";
 export type EmailSettings = {
   enabled: boolean;
   mode: string;
@@ -280,6 +280,14 @@ export function makeEmailWorker(
           lease = String(job.lease);
         if (!uuid.test(id) || !uuid.test(lease)) throw Error("RPC_UNAVAILABLE");
         try {
+          // Defense in depth for legacy queues/frozen retries. SQL authorizes the
+          // actual order again immediately before HTTP; no browser state is trusted.
+          const snapshot = emailSnapshot(job.payload);
+          if (
+            snapshot.method === "mercado_pago" &&
+            snapshot.event !== "payment_approved"
+          )
+            continue;
           let encrypted = job.request_ciphertext,
             expected = job.request_hash;
           if (encrypted === null) {

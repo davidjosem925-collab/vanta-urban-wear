@@ -60,7 +60,7 @@ it("private worker rejects browser sessions, unknown actions and large bodies be
   expect(fetcher).not.toHaveBeenCalled();
 });
 it("disabled worker only maintains retention; SQL-disabled worker sends nothing even if Edge is enabled", async () => {
-  await f.order();
+  await f.order("transfer");
   const fetcher = vi.fn();
   expect(
     await (
@@ -92,7 +92,7 @@ it("malformed mode, encryption or allowlist fails closed before claiming/sending
   }
 });
 it("real SQL + simulated Resend: sends server snapshot to authorized buyer and stores acceptance separately from delivery", async () => {
-  await f.order();
+  await f.order("transfer");
   const fetcher = vi.fn().mockResolvedValue(Response.json({ id: providerId }));
   const stock = (
     await f.db.query("select on_hand,reserved from public.inventory")
@@ -126,7 +126,7 @@ it("real SQL + simulated Resend: sends server snapshot to authorized buyer and s
   ).toEqual(stock);
 });
 it("lost provider response retries the exact encrypted/frozen body and key across worker deployments without duplicate mail", async () => {
-  await f.order();
+  await f.order("transfer");
   const bodies: string[] = [],
     keys: string[] = [];
   const fetcher = vi.fn(
@@ -158,7 +158,7 @@ it("lost provider response retries the exact encrypted/frozen body and key acros
   expect(fetcher).toHaveBeenCalledTimes(2);
 });
 it("an HTTP-accepted response whose DB acknowledgement is lost recovers the original provider ID with the same key", async () => {
-  await f.order();
+  await f.order("transfer");
   let fail = true;
   const rpc = async (name: string, args: Record<string, unknown>) => {
     if (name === "demo_email_result" && args.p_outcome === "accepted" && fail) {
@@ -195,7 +195,7 @@ it.each([
 ] as const)(
   "provider HTTP %s classified without exposing bodies",
   async (status, body, code, state) => {
-    await f.order();
+    await f.order("transfer");
     const sink = vi.fn();
     const fetcher = vi
       .fn()
@@ -224,13 +224,13 @@ it("bad JSON, malformed success, redirects, response size and timeout stay uncer
     new Response("moved", { status: 302 }),
   ]) {
     await f.reset();
-    await f.order();
+    await f.order("transfer");
     await worker(vi.fn().mockResolvedValue(response))(request());
     expect((await result())[0].provider_id).toBeNull();
     expect((await result())[0].delivery).toBe("unknown");
   }
   await f.reset();
-  await f.order();
+  await f.order("transfer");
   await worker(
     vi.fn().mockRejectedValue(new DOMException("private", "TimeoutError")),
   )(request());
@@ -240,7 +240,7 @@ it("bad JSON, malformed success, redirects, response size and timeout stay uncer
   ).toEqual({ on_hand: 8, reserved: 2 });
 });
 it("delivery GET verifies known provider ID/recipient/from; accepted rows never trigger another POST", async () => {
-  await f.order();
+  await f.order("transfer");
   const fetcher = vi
     .fn()
     .mockResolvedValueOnce(Response.json({ id: providerId }));
@@ -266,7 +266,7 @@ it("delivery GET verifies known provider ID/recipient/from; accepted rows never 
   ).toBe(1);
 });
 it("forged delivery status or recipient mismatch cannot mark an email delivered", async () => {
-  await f.order();
+  await f.order("transfer");
   await worker(vi.fn().mockResolvedValue(Response.json({ id: providerId })))(
     request(),
   );
@@ -288,7 +288,7 @@ it("forged delivery status or recipient mismatch cannot mark an email delivered"
   });
 });
 it("revoked recipients and changed encryption keys cannot cause an email to be redirected to a new recipient", async () => {
-  await f.order();
+  await f.order("transfer");
   const fetcher = vi.fn();
   await worker(fetcher, vi.fn(), f.rpc, {
     ...emailSettings,
@@ -297,7 +297,7 @@ it("revoked recipients and changed encryption keys cannot cause an email to be r
   expect(fetcher).not.toHaveBeenCalled();
   expect((await result())[0].state).toBe("suppressed");
   await f.reset();
-  await f.order();
+  await f.order("transfer");
   await worker(fetcher, vi.fn(), f.rpc, {
     ...emailSettings,
     encryption: btoa("z".repeat(32)),
@@ -306,7 +306,7 @@ it("revoked recipients and changed encryption keys cannot cause an email to be r
   expect((await result())[0].error_code).toBe("KEY_UNAVAILABLE");
 });
 it("frozen request ciphertext cannot be swapped between queue items or modified in local/database metadata", async () => {
-  await f.order();
+  await f.order("transfer");
   const fetcher = vi.fn().mockRejectedValue(Error("network"));
   await worker(fetcher)(request());
   const row = (
@@ -345,7 +345,7 @@ it("RPC transport is allowlisted, bounded and strips raw database errors", async
 });
 
 it("a committed acceptance whose RPC response is lost cannot fall back to another POST", async () => {
-  await f.order();
+  await f.order("transfer");
   let lost = true;
   const rpc = async (name: string, args: Record<string, unknown>) => {
     const data = await f.rpc(name, args);

@@ -205,7 +205,10 @@ export function emailTemplate(raw: unknown) {
     .join("");
   const html = `<!doctype html><html lang="es-AR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>VANTA · Demostración</title></head><body style="margin:0;background:#090909;color:#f2f0ed;font-family:Arial,Helvetica,sans-serif;line-height:1.7"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#090909"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#121213;border:1px solid #383838"><tr><td style="padding:28px 20px"><div style="font-size:30px;font-weight:700;letter-spacing:-2px">VANTA<span style="font-size:12px;letter-spacing:1px"> ®</span></div><p style="color:#b7b4ae;font-size:11px;letter-spacing:2px">URBAN WEAR / DEMOSTRACIÓN</p><h1 style="font-size:26px;font-weight:400;line-height:1.3">${escape(c.title)}</h1><p>${escape(c.message)}</p><p style="font-size:12px;color:#c3bfb8;overflow-wrap:anywhere;word-break:break-word">Pedido: ${s.reference}<br>Evento registrado: ${escape(when)} (Argentina)</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${products}</table><p>Subtotal: ${escape(ars(s.subtotal_cents))} ARS<br>Entrega: ${escape(delivery)}<br>Costo de envío registrado: ${escape(ars(s.shipping_cents))} ARS</p><p style="font-size:20px">Total del pedido: <strong style="font-weight:500">${escape(ars(s.total_cents))} ARS</strong></p><p style="font-size:13px;color:#c3bfb8">${escape(method)}</p><p style="border-top:1px solid #383838;padding-top:20px;font-size:12px;color:#b7b4ae">${escape(legal)}</p></td></tr></table></td></tr></table></body></html>`;
   return {
-    subject: `VANTA Demo · ${c.title} · ${s.reference}`,
+    subject:
+      s.event === "payment_approved"
+        ? "VANTA Demo · Pago de prueba aprobado"
+        : `VANTA Demo · ${c.title} · ${s.reference}`,
     html,
     text: plain,
   };
