@@ -177,6 +177,44 @@ export function makePaymentHandler(
       status = s;
       return new Response(JSON.stringify(body), { status: s, headers });
     };
+    async function requireAdminSession() {
+      if (operation !== "checkout") return;
+      const authorization = request.headers.get("authorization") ?? "";
+      const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+      if (!token || token.length > 8192) throw new PaymentError("FORBIDDEN", 401);
+      let response: Response;
+      try {
+        response = await fetcher(`${settings.supabaseUrl}/rest/v1/rpc/is_admin`, {
+          method: "POST",
+          headers: {
+            apikey: settings.serviceRoleKey,
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: "{}",
+          signal: AbortSignal.timeout(15000),
+          redirect: "error",
+          credentials: "omit",
+        });
+      } catch {
+        throw new PaymentError("FORBIDDEN", 401);
+      }
+      let data: unknown;
+      try {
+        data = await jsonBody(response);
+      } catch {
+        throw new PaymentError("FORBIDDEN", response.status === 401 ? 401 : 403);
+      }
+      const allowed =
+        response.ok &&
+        (data === true ||
+          (typeof data === "object" && data !== null && "v" in data && data.v === true));
+      if (!allowed)
+        throw new PaymentError(
+          "FORBIDDEN",
+          response.status >= 400 ? response.status : 403,
+        );
+    }
     try {
       validateSettings(settings);
       if (
@@ -281,6 +319,7 @@ export function makePaymentHandler(
         throw new PaymentError("INVALID_REQUEST", 400);
       if (b.action === "create" && !settings.enabled)
         throw new PaymentError("DISABLED");
+      await requireAdminSession();
       const hop =
         request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() ||
         "unknown";

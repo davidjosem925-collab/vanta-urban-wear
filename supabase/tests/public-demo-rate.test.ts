@@ -150,7 +150,11 @@ it("checkout and payment recovery share the same actor budget without admission,
     data: await rpc(name, args),
     error: null,
   });
-  const provider = vi.fn();
+  const provider = vi.fn(async (url: RequestInfo | URL) =>
+    String(url).includes("/rest/v1/rpc/is_admin")
+      ? Response.json(true, { status: 200 })
+      : Response.json({}),
+  ) as typeof fetch;
   const orders = makeHandler(
     {
       origin: settings.origin,
@@ -170,7 +174,11 @@ it("checkout and payment recovery share the same actor budget without admission,
   const req = (body: unknown) =>
     new Request("https://edge.example/test", {
       method: "POST",
-      headers: { origin: settings.origin, "content-type": "application/json" },
+      headers: {
+        origin: settings.origin,
+        "content-type": "application/json",
+        authorization: "Bearer admin-session-token",
+      },
       body: JSON.stringify(body),
     });
   for (let i = 0; i < 60; i++) {
@@ -207,7 +215,11 @@ it("checkout and payment recovery share the same actor budget without admission,
       )
     ).status,
   ).toBe(429);
-  expect(provider).not.toHaveBeenCalled();
+  expect(
+    provider.mock.calls.filter(
+      ([url]) => !String(url).includes("/rest/v1/rpc/is_admin"),
+    ),
+  ).toHaveLength(0);
   expect(rpc.mock.calls.some(([n]) => n === "demo_admit_creation")).toBe(false);
   expect(await f.scalar("select count(*)::int v from public.orders")).toBe(1);
   expect(

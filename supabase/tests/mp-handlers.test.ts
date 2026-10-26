@@ -26,6 +26,12 @@ let postResponse: Record<string, unknown> = {};
 let writes: { url: string; body: unknown; key: string | null }[] = [];
 const fetcher = vi.fn(async (url: RequestInfo | URL, options?: RequestInit) => {
   const path = String(url);
+  if (path.includes("/rest/v1/rpc/is_admin")) {
+    const auth = new Headers(options?.headers).get("authorization");
+    if (auth === "Bearer admin-session-token")
+      return Response.json(true, { status: 200 });
+    return Response.json(false, { status: 403 });
+  }
   if (path === "https://api.mercadolibre.com/users/me")
     return Response.json({
       ...identity,
@@ -104,10 +110,16 @@ function checkout(
   action = "create",
   extra: Record<string, unknown> = {},
   who = capability,
+  admin = true,
 ) {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    origin: settings.origin,
+  };
+  if (admin) headers.authorization = "Bearer admin-session-token";
   return new Request("https://edge.example/mp-checkout", {
     method: "POST",
-    headers: { "content-type": "application/json", origin: settings.origin },
+    headers,
     body: JSON.stringify({ action, reference, capability: who, ...extra }),
   });
 }
@@ -255,8 +267,39 @@ it("wrong capability and arbitrary prices cannot create a payment or call the pr
     (await handler("checkout")(checkout("create", {}, "b".repeat(64)))).status,
   ).toBe(404);
   expect(writes).toHaveLength(0);
-  expect(fetcher).not.toHaveBeenCalled();
+  expect(
+    fetcher.mock.calls.filter(([url]) =>
+      String(url).includes("/rest/v1/rpc/is_admin"),
+    ),
+  ).toHaveLength(1);
   expect(await value("select count(*)::int v from public.payments")).toBe(0);
+});
+it("anonymous or invalid admin sessions are rejected before provider access", async () => {
+  const adminGuard = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(url);
+    if (path.includes("/rest/v1/rpc/is_admin"))
+      return Response.json(false, { status: 403 });
+    return fetcher(url, init);
+  });
+  expect((await makePaymentHandler("checkout", settings, rpc, adminGuard)(checkout("create", {}, capability, false))).status).toBe(401);
+  expect((await makePaymentHandler("checkout", settings, rpc, adminGuard)(checkout("recover", {}, capability, false))).status).toBe(401);
+  expect(adminGuard).not.toHaveBeenCalled();
+  expect(fetcher).not.toHaveBeenCalled();
+});
+it("effective admin JWT authorizes checkout and follow-up recovery", async () => {
+  const providerFetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(url);
+    if (path.includes("/rest/v1/rpc/is_admin"))
+      return Response.json(true, { status: 200 });
+    return fetcher(url, init);
+  });
+  const create = makePaymentHandler("checkout", settings, rpc, providerFetch);
+  const first = await create(checkout("create", {}, capability, true));
+  expect(first.status).toBe(200);
+  const recovered = await create(checkout("recover", {}, capability, true));
+  expect(recovered.status).toBe(200);
+  expect(providerFetch.mock.calls.some(([url]) => String(url).includes("/rest/v1/rpc/is_admin"))).toBe(true);
+  expect(writes).toHaveLength(1);
 });
 it("a productive seller token is rejected before payment preparation or any provider POST", async () => {
   realSeller = true;
@@ -401,21 +444,30 @@ it("origin, rate limits and body bounds reject calls before any provider access"
       origin: "https://foreign.example",
     },
   });
+  vi.mocked(fetcher).mockClear();
   expect((await handler("checkout")(wrong)).status).toBe(403);
+  expect(fetcher).not.toHaveBeenCalled();
   const limited: Rpc = async (name, args) =>
     name === "demo_rate_limit" ? false : rpc(name, args);
+  vi.mocked(fetcher).mockClear();
   expect((await handler("checkout", {}, limited)(checkout())).status).toBe(429);
+  expect(fetcher.mock.calls.filter(([url]) => String(url).includes("/rest/v1/rpc/is_admin"))).toHaveLength(1);
   const large = new Request("https://edge.example", {
     method: "POST",
     headers: { "content-type": "application/json", origin: settings.origin },
     body: "x".repeat(2048),
   });
+  vi.mocked(fetcher).mockClear();
   expect((await handler("checkout")(large)).status).toBe(413);
   expect(fetcher).not.toHaveBeenCalled();
 });
 it("safe diagnostic identifies upstream identity HTTP status without recording request/response/token/IP", async () => {
   const reject = vi.fn(
-    async () => new Response("private-provider-body", { status: 401 }),
+    async (url: RequestInfo | URL) => {
+      if (String(url).includes("/rest/v1/rpc/is_admin"))
+        return Response.json(true, { status: 200 });
+      return new Response("private-provider-body", { status: 401 });
+    },
   ) as typeof fetch;
   const r = await makePaymentHandler("checkout", settings, rpc, reject, (e) =>
     diagnostics.push(e),
@@ -1154,7 +1206,11 @@ for (const field of ["seller_id", "application_id"] as const)
         )(checkout(action));
         expect(r.status).toBe(503);
         expect(await r.json()).toEqual({ error: "NOT_CONFIGURED" });
-        expect(fetcher).not.toHaveBeenCalled();
+        expect(
+          fetcher.mock.calls.filter(([url]) =>
+            String(url).includes("/rest/v1/rpc/is_admin"),
+          ),
+        ).toHaveLength(1);
         expect(writes).toHaveLength(count);
         expect(await value("select status v from public.orders")).toBe(
           "pending",
