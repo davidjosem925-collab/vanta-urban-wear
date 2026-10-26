@@ -44,7 +44,7 @@ No se alteran `MP_MODE=test`, verificación autenticada del vendedor `test_user`
 - `git diff --check`: **PASS**.
 - Se hizo además una corrida completa con pool threads temporal: 63 archivos / 1101 pruebas aprobadas. Se restauró la configuración y la corrida final normal también pasó; no se incluye ningún cambio a Vitest en la PR.
 - No se ejecutaron las suites E2E ni PostgreSQL/Docker externas a `npm run check`. No se ejecutó `npm audit` como parte de esta auditoría focalizada.
-- Registro completo de la corrida final adjunto como `npm-run-check.log`.
+- Registro completo de la corrida final adjunto como [npm-run-check.log](./npm-run-check.log).
 
 Las respuestas de PostgREST a JWT inválidos/vencidos se simulan en pruebas del handler; las políticas de sesión/membresía se ejecutan en SQL real local con PGlite. No se probaron firma JWT ni configuración del gateway/JWKS contra el proyecto desplegado. Esta limitación requiere smoke tests de autorización en el destino antes de habilitar checkout.
 
