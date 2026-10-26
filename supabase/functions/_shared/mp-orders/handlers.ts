@@ -179,15 +179,16 @@ export function makePaymentHandler(
     };
     async function requireAdminSession() {
       if (operation !== "checkout") return;
+      if (settings.anonKey.length < 32) throw new PaymentError("NOT_CONFIGURED");
       const authorization = request.headers.get("authorization") ?? "";
       const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
       if (!token || token.length > 8192) throw new PaymentError("FORBIDDEN", 401);
       let response: Response;
       try {
-        response = await fetcher(`${settings.supabaseUrl}/rest/v1/rpc/is_admin`, {
+        response = await fetcher(`${settings.supabaseUrl}/rest/v1/rpc/mp_checkout_is_admin`, {
           method: "POST",
           headers: {
-            apikey: settings.serviceRoleKey,
+            apikey: settings.anonKey,
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
@@ -205,15 +206,11 @@ export function makePaymentHandler(
       } catch {
         throw new PaymentError("FORBIDDEN", response.status === 401 ? 401 : 403);
       }
-      const allowed =
-        response.ok &&
-        (data === true ||
-          (typeof data === "object" && data !== null && "v" in data && data.v === true));
-      if (!allowed)
-        throw new PaymentError(
-          "FORBIDDEN",
-          response.status >= 400 ? response.status : 403,
-        );
+      // PostgREST verifies the signature/expiry and selects the role from this
+      // exact bearer token. The RPC also checks the live Auth session and the
+      // existing is_admin policy; never use the privileged payment RPC client.
+      if (!response.ok || data !== true)
+        throw new PaymentError("FORBIDDEN", response.status === 401 ? 401 : 403);
     }
     try {
       validateSettings(settings);

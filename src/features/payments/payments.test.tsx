@@ -122,6 +122,14 @@ it("payment request sends only capability/reference/action, ignoring manipulated
   expect(options.redirect).toBe("error");
   expect(options.credentials).toBe("omit");
 });
+it("sends the admin JWT only as Authorization, preserving the public API key", async () => {
+  const fetcher = vi.fn().mockResolvedValue(Response.json(view));
+  await requestPayment(config, session, "recover", fetcher, "admin-access-jwt");
+  const [, options] = fetcher.mock.calls[0];
+  expect(options.headers.Authorization).toBe("Bearer admin-access-jwt");
+  expect(options.headers.apikey).toBe(config.key);
+  expect(options.body).not.toContain("admin-access-jwt");
+});
 it("transfer calls the authorized demo Edge endpoint and cannot send an approval", async () => {
   const s = {
     ...session,

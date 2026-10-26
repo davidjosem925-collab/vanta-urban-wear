@@ -151,7 +151,7 @@ it("checkout and payment recovery share the same actor budget without admission,
     error: null,
   });
   const provider = vi.fn(async (url: RequestInfo | URL) =>
-    String(url).includes("/rest/v1/rpc/is_admin")
+    String(url).includes("/rest/v1/rpc/mp_checkout_is_admin")
       ? Response.json(true, { status: 200 })
       : Response.json({}),
   ) as typeof fetch;
@@ -217,7 +217,7 @@ it("checkout and payment recovery share the same actor budget without admission,
   ).toBe(429);
   expect(
     provider.mock.calls.filter(
-      ([url]) => !String(url).includes("/rest/v1/rpc/is_admin"),
+      ([url]) => !String(url).includes("/rest/v1/rpc/mp_checkout_is_admin"),
     ),
   ).toHaveLength(0);
   expect(rpc.mock.calls.some(([n]) => n === "demo_admit_creation")).toBe(false);

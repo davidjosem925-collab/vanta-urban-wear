@@ -133,6 +133,7 @@ export async function requestPayment(
   session: PaymentSession,
   action: "create" | "recover",
   fetcher: typeof fetch = fetch,
+  adminAccessToken?: string,
 ): Promise<PaymentView | null> {
   const transfer = session.attempt.payload.payment === "transfer";
   // No prices, contact data, status or items may enter this payload.
@@ -147,7 +148,13 @@ export async function requestPayment(
       `${config.url}/functions/v1/${transfer ? "demo-orders" : "mp-checkout"}`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json", apikey: config.key },
+        headers: {
+          "Content-Type": "application/json",
+          apikey: config.key,
+          ...(!transfer && adminAccessToken
+            ? { Authorization: `Bearer ${adminAccessToken}` }
+            : {}),
+        },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(25000),
         redirect: "error",

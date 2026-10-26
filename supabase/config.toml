@@ -6,7 +6,9 @@ project_id = "vanta-urban-wear"
 verify_jwt = false
 
 # Phase 2: no deployment/activation by this file. Each handler verifies its own authority.
-# Checkout: existing order capability + rate limit. Webhook: official HMAC + API lookup.
+# Checkout: verified admin JWT + live Auth session + order capability + rate limit.
+# JWT verification is enforced by PostgREST in mp_checkout_is_admin, not this gateway.
+# Webhook: official HMAC + API lookup.
 # Worker: private bearer secret. Never accepts a browser session as worker authority.
 [functions.mp-checkout]
 verify_jwt = false

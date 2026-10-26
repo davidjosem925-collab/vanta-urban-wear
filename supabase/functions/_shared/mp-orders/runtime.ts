@@ -14,7 +14,7 @@ export function servePayments(operation: Operation) {
     origin: env("MP_ALLOWED_ORIGIN"),
     actorSecret: env("DEMO_ACTOR_SECRET"),
     supabaseUrl: env("SUPABASE_URL"),
-    serviceRoleKey: env("SUPABASE_SERVICE_ROLE_KEY"),
+    anonKey: env("SUPABASE_ANON_KEY"),
   };
   Deno.serve(
     makePaymentHandler(

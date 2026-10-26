@@ -26,7 +26,7 @@ let postResponse: Record<string, unknown> = {};
 let writes: { url: string; body: unknown; key: string | null }[] = [];
 const fetcher = vi.fn(async (url: RequestInfo | URL, options?: RequestInit) => {
   const path = String(url);
-  if (path.includes("/rest/v1/rpc/is_admin")) {
+  if (path.includes("/rest/v1/rpc/mp_checkout_is_admin")) {
     const auth = new Headers(options?.headers).get("authorization");
     if (auth === "Bearer admin-session-token")
       return Response.json(true, { status: 200 });
@@ -269,7 +269,7 @@ it("wrong capability and arbitrary prices cannot create a payment or call the pr
   expect(writes).toHaveLength(0);
   expect(
     fetcher.mock.calls.filter(([url]) =>
-      String(url).includes("/rest/v1/rpc/is_admin"),
+      String(url).includes("/rest/v1/rpc/mp_checkout_is_admin"),
     ),
   ).toHaveLength(1);
   expect(await value("select count(*)::int v from public.payments")).toBe(0);
@@ -277,7 +277,7 @@ it("wrong capability and arbitrary prices cannot create a payment or call the pr
 it("anonymous or invalid admin sessions are rejected before provider access", async () => {
   const adminGuard = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const path = String(url);
-    if (path.includes("/rest/v1/rpc/is_admin"))
+    if (path.includes("/rest/v1/rpc/mp_checkout_is_admin"))
       return Response.json(false, { status: 403 });
     return fetcher(url, init);
   });
@@ -289,7 +289,7 @@ it("anonymous or invalid admin sessions are rejected before provider access", as
 it("effective admin JWT authorizes checkout and follow-up recovery", async () => {
   const providerFetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const path = String(url);
-    if (path.includes("/rest/v1/rpc/is_admin"))
+    if (path.includes("/rest/v1/rpc/mp_checkout_is_admin"))
       return Response.json(true, { status: 200 });
     return fetcher(url, init);
   });
@@ -298,7 +298,7 @@ it("effective admin JWT authorizes checkout and follow-up recovery", async () =>
   expect(first.status).toBe(200);
   const recovered = await create(checkout("recover", {}, capability, true));
   expect(recovered.status).toBe(200);
-  expect(providerFetch.mock.calls.some(([url]) => String(url).includes("/rest/v1/rpc/is_admin"))).toBe(true);
+  expect(providerFetch.mock.calls.some(([url]) => String(url).includes("/rest/v1/rpc/mp_checkout_is_admin"))).toBe(true);
   expect(writes).toHaveLength(1);
 });
 it("a productive seller token is rejected before payment preparation or any provider POST", async () => {
@@ -451,7 +451,7 @@ it("origin, rate limits and body bounds reject calls before any provider access"
     name === "demo_rate_limit" ? false : rpc(name, args);
   vi.mocked(fetcher).mockClear();
   expect((await handler("checkout", {}, limited)(checkout())).status).toBe(429);
-  expect(fetcher.mock.calls.filter(([url]) => String(url).includes("/rest/v1/rpc/is_admin"))).toHaveLength(1);
+  expect(fetcher.mock.calls.filter(([url]) => String(url).includes("/rest/v1/rpc/mp_checkout_is_admin"))).toHaveLength(1);
   const large = new Request("https://edge.example", {
     method: "POST",
     headers: { "content-type": "application/json", origin: settings.origin },
@@ -464,7 +464,7 @@ it("origin, rate limits and body bounds reject calls before any provider access"
 it("safe diagnostic identifies upstream identity HTTP status without recording request/response/token/IP", async () => {
   const reject = vi.fn(
     async (url: RequestInfo | URL) => {
-      if (String(url).includes("/rest/v1/rpc/is_admin"))
+      if (String(url).includes("/rest/v1/rpc/mp_checkout_is_admin"))
         return Response.json(true, { status: 200 });
       return new Response("private-provider-body", { status: 401 });
     },
@@ -1208,7 +1208,7 @@ for (const field of ["seller_id", "application_id"] as const)
         expect(await r.json()).toEqual({ error: "NOT_CONFIGURED" });
         expect(
           fetcher.mock.calls.filter(([url]) =>
-            String(url).includes("/rest/v1/rpc/is_admin"),
+            String(url).includes("/rest/v1/rpc/mp_checkout_is_admin"),
           ),
         ).toHaveLength(1);
         expect(writes).toHaveLength(count);

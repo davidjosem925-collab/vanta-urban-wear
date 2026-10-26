@@ -10,7 +10,7 @@ export const settings: Settings = {
   webhookSecret: "signature-fixture-only-".repeat(3),
   workerSecret: "worker-fixture-only-".repeat(3),
   supabaseUrl: "https://project.supabase.co",
-  serviceRoleKey: "service-role-fixture-key-1234567890abcdef",
+  anonKey: "service-role-fixture-key-1234567890abcdef",
 };
 export const resource = "ORDTST01KS5AJ6HTK2HRQ3XJ3C2JCKP9";
 export const payment: Context = {

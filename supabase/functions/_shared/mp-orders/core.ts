@@ -77,7 +77,7 @@ export type Settings = {
   origin: string;
   actorSecret: string;
   supabaseUrl: string;
-  serviceRoleKey: string;
+  anonKey: string;
 };
 export const uuid =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -92,8 +92,7 @@ export function validateSettings(c: Settings) {
     c.workerSecret.length < 32 ||
     c.webhookSecret.length < 32 ||
     c.actorSecret.length < 32 ||
-    !c.supabaseUrl ||
-    c.serviceRoleKey.length < 32
+    !c.supabaseUrl
   )
     throw new PaymentError("NOT_CONFIGURED");
   try {
