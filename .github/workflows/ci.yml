@@ -86,6 +86,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - run: npm run test:rates:postgres
+        env:
+          VANTA_TEST_PG_CONTAINER: ${{ job.services.postgres.id }}
       - run: npm run test:orders:postgres
         env:
           VANTA_TEST_PG_CONTAINER: ${{ job.services.postgres.id }}
