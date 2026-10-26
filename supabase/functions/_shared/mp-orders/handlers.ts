@@ -30,6 +30,7 @@ export function makePaymentHandler(
     c: Context,
     dependency: "create" | "get" = "get",
   ) {
+    provider.assertContext(c);
     const s = snapshot(raw, c, settings, dependency);
     return context(
       await rpc("mp_test_apply", {
@@ -41,6 +42,7 @@ export function makePaymentHandler(
     );
   }
   async function create(c: Context, claimed = false) {
+    provider.assertContext(c);
     if (c.provider_order_id)
       return apply(await provider.get(c.provider_order_id), c);
     if (c.order_status !== "pending" || Date.parse(c.expires_at) <= Date.now())
@@ -63,10 +65,16 @@ export function makePaymentHandler(
     return linked;
   }
   async function reconcile(c: Context) {
+    provider.assertContext(c);
     if (!c.provider_order_id) {
       const found = await provider.find(c);
       if (found) return apply(found, c);
       const config = record(await rpc("mp_test_settings", {}));
+      if (
+        config.seller_id !== settings.seller ||
+        config.application_id !== settings.application
+      )
+        throw new PaymentError("NOT_CONFIGURED");
       if (
         settings.enabled &&
         config.enabled === true &&
@@ -304,6 +312,7 @@ export function makePaymentHandler(
       }
       if (raw === null) return reply({ found: false });
       let c = context(raw);
+      provider.assertContext(c);
       if (b.action === "create") c = await create(c);
       else {
         // Recovery is read-only at the provider: search a lost POST by the

@@ -1113,3 +1113,123 @@ it("an unsafe POST URL remains unlinked; authorized search+GET can recover a saf
   ).toBe(1);
   expect(writes).toHaveLength(1);
 });
+
+// Corrupt only the returned trusted-server context, never accept browser identity.
+function mismatchedContext(field: "seller_id" | "application_id"): Rpc {
+  return async (name, args) => {
+    const v = await rpc(name, args);
+    if (name === "mp_test_claim_work") {
+      const batch = v as { payments: Record<string, unknown>[] };
+      return {
+        ...batch,
+        payments: batch.payments.map((c) => ({ ...c, [field]: "999" })),
+      };
+    }
+    if ((name === "mp_test_prepare" || name === "mp_test_lookup") && v)
+      return { ...(v as Record<string, unknown>), [field]: "999" };
+    return v;
+  };
+}
+async function preparedUnlinked() {
+  await rpc("mp_test_prepare", {
+    p_reference: reference,
+    p_owner: await hash(capability),
+    p_create: true,
+    p_return_origin: settings.origin,
+  });
+}
+for (const field of ["seller_id", "application_id"] as const)
+  for (const linked of [false, true]) {
+    it.each(["create", "recover"])(
+      `checkout %s rejects mismatched ${field} before provider access (linked=${linked})`,
+      async (action) => {
+        if (linked) await handler("checkout")(checkout());
+        else await preparedUnlinked();
+        const count = writes.length;
+        vi.mocked(fetcher).mockClear();
+        const r = await handler(
+          "checkout",
+          {},
+          mismatchedContext(field),
+        )(checkout(action));
+        expect(r.status).toBe(503);
+        expect(await r.json()).toEqual({ error: "NOT_CONFIGURED" });
+        expect(fetcher).not.toHaveBeenCalled();
+        expect(writes).toHaveLength(count);
+        expect(await value("select status v from public.orders")).toBe(
+          "pending",
+        );
+        expect(await value("select reserved v from public.inventory")).toBe(2);
+      },
+    );
+    it(`worker rejects mismatched ${field} before search/GET/POST (linked=${linked})`, async () => {
+      if (linked) await handler("checkout")(checkout());
+      else await preparedUnlinked();
+      const count = writes.length;
+      await db.exec("reset role");
+      await due();
+      await db.exec("set role service_role");
+      vi.mocked(fetcher).mockClear();
+      const r = await handler("worker", {}, mismatchedContext(field))(worker());
+      expect(await r.json()).toMatchObject({ processed: 0, retry: 1 });
+      expect(diagnostics.at(-1)).toMatchObject({ outcome: "NOT_CONFIGURED" });
+      expect(fetcher).not.toHaveBeenCalled();
+      expect(writes).toHaveLength(count);
+      expect(await value("select status v from public.orders")).toBe("pending");
+      expect(await value("select reserved v from public.inventory")).toBe(2);
+    });
+  }
+it.each(["seller_id", "application_id"] as const)(
+  "worker rejects inconsistent database settings %s before fallback creation",
+  async (field) => {
+    await preparedUnlinked();
+    await db.exec(`reset role;update public.mp_test_config set ${field}='999'`);
+    await due();
+    await db.exec("set role service_role");
+    const r = await handler("worker")(worker());
+    expect(await r.json()).toMatchObject({ processed: 0, retry: 1 });
+    expect(diagnostics.at(-1)).toMatchObject({ outcome: "NOT_CONFIGURED" });
+    expect(writes).toHaveLength(0);
+    expect(await value("select mp_order_id v from public.payments")).toBeNull();
+  },
+);
+it.each(["seller_id", "application_id"] as const)(
+  "webhook cannot apply approval with mismatched frozen %s",
+  async (field) => {
+    await handler("checkout")(checkout());
+    providerState = {
+      status: "processed",
+      status_detail: "accredited",
+      total_paid_amount: "50001.00",
+    };
+    const r = await handler(
+      "webhook",
+      {},
+      mismatchedContext(field),
+    )(await webhook());
+    expect(r.status).toBe(503);
+    expect(await value("select status v from public.orders")).toBe("pending");
+    expect(await value("select reserved v from public.inventory")).toBe(2);
+    expect(writes).toHaveLength(1);
+  },
+);
+it.each(["create", "get"])(
+  "malformed live_mode in %s response never links or settles",
+  async (path) => {
+    if (path === "get") await handler("checkout")(checkout());
+    const count = writes.length;
+    providerState = { live_mode: "false" };
+    const r =
+      path === "create"
+        ? await handler("checkout")(checkout())
+        : await handler("checkout")(checkout("recover"));
+    expect(r.status).toBe(503);
+    expect(diagnostics.at(-1)).toMatchObject({
+      validation: "live_mode",
+      dependency: path,
+    });
+    expect(await value("select status v from public.orders")).toBe("pending");
+    expect(await value("select reserved v from public.inventory")).toBe(2);
+    expect(writes).toHaveLength(count + (path === "create" ? 1 : 0));
+  },
+);

@@ -125,7 +125,10 @@ export function snapshot(
     "total_amount",
     field("total_amount", () => cents(v.total_amount)) === c.amount_cents,
   );
-  requireField("live_mode", v.live_mode !== true);
+  requireField(
+    "live_mode",
+    !Object.hasOwn(v, "live_mode") || v.live_mode === false,
+  );
   const paidValue = v.total_paid_amount;
   // Classification adds metadata only: cents() remains the sole parser.
   const paidDetail: PaidAmountDetail =
@@ -350,6 +353,13 @@ export class Provider {
       );
     }
   }
+  assertContext(c: Context) {
+    if (
+      c.seller_id !== this.settings.seller ||
+      c.application_id !== this.settings.application
+    )
+      throw new PaymentError("NOT_CONFIGURED");
+  }
   async verifyIdentity() {
     // Official authenticated identity endpoint; no unsigned/user-supplied declaration of sandbox.
     const me = record(
@@ -372,6 +382,7 @@ export class Provider {
       throw new PaymentError("TEST_IDENTITY_REQUIRED", 503, "identity");
   }
   async create(c: Context) {
+    this.assertContext(c);
     await this.verifyIdentity();
     return this.request(
       "https://api.mercadopago.com/v1/orders",
@@ -387,6 +398,7 @@ export class Provider {
     return this.request(`https://api.mercadopago.com/v1/orders/${id}`);
   }
   async find(c: Context) {
+    this.assertContext(c);
     await this.verifyIdentity();
     const end = Math.min(
       Date.now() + 300000,
@@ -429,6 +441,7 @@ export class Provider {
     return this.get(String(v.id));
   }
   async cancel(c: Context) {
+    this.assertContext(c);
     if (!c.provider_order_id || !testOrder.test(c.provider_order_id))
       throw new PaymentError("INVALID_REQUEST", 400);
     await this.verifyIdentity();
